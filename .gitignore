@@ -1,0 +1,26 @@
+.agents
+.claude
+.windsurf
+/src/generated/prisma
+node_modules
+_tmp*
+
+# 环境变量（含 JWT 密钥，绝不入库）
+.env
+.env.local
+.env.*.local
+
+# 用户上传的文件（运行时生成，不进版本库）
+/public/uploads
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+
+# 构建产物
+dist
