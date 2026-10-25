@@ -1,5 +1,7 @@
 # mall-api
 
+![CI](https://github.com/ndotsc/mall-api/actions/workflows/ci.yml/badge.svg)
+
 小型商城后端：Express 5 + Prisma 6 + MySQL。提供商品 / 文章 / 分类 / 订单 / 鉴权 / 上传接口，写接口需管理员 JWT。
 
 ## 环境要求

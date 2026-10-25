@@ -24,3 +24,6 @@ Thumbs.db
 
 # 构建产物
 dist
+
+# 工具链内部文件（非项目产物，不入库）
+skills-lock.json
