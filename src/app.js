@@ -23,6 +23,12 @@ app.use(cors({ origin: allowedOrigins }))
 //    必须放在路由之前，否则路由里读不到 body
 app.use(express.json())
 
+// 健康检查：部署平台（Railway / Render / Nginx）靠它判断实例是否存活
+// 放在业务路由之前，避免被 /api 前缀或 404 兜底拦截
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() })
+})
+
 app.use('/uploads', express.static(path.resolve('public/uploads')))
 
 // 4. 业务路由：所有接口挂在 /api 前缀下
