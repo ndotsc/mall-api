@@ -42,13 +42,19 @@ curl http://localhost:3000/api/health
 # 期望返回：{"status":"ok","uptime":<秒>}
 ```
 
+### 2.2.1 灌入演示数据（可选）
+容器起的是空库，如需 admin 账号和示例商品供联调：
+```bash
+docker compose exec backend pnpm db:seed
+```
+
 ### 2.3 起前端联调
 ```bash
 cd ../mall-web
 pnpm dev                    # 打开 http://localhost:5173
 # 前端 /api 经 Vite dev proxy 转发到 localhost:3000（后端容器映射端口），无需改代码
 ```
-浏览器实测：注册 → 登录（admin/admin123 可进后台）→ 浏览商品 → 下单 → 查我的订单。
+浏览器实测：若已 seed → 用 admin/admin123 登录进后台；否则先注册一个账号 → 浏览商品 → 下单 → 查我的订单。
 
 ### 2.4 收尾
 ```bash
