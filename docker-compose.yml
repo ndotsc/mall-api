@@ -1,3 +1,7 @@
+# 本地验证用：一键起 MySQL + 后端，模拟生产形态
+# 用法（全起）：docker compose up -d            （后端会自动 prisma migrate deploy 再启动）
+# 只起数据库（本地 node 跑后端）：docker compose up -d mysql
+# 前端用 pnpm dev 通过 Vite proxy 连本机 3000 端口，无需改代码
 services:
   mysql:
     image: mysql:8.0
@@ -19,6 +23,22 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  backend:
+    build: .
+    container_name: mall-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://mall:mall123@mysql:3306/mall
+      JWT_SECRET: dev-secret-change-me
+      CORS_ORIGINS: http://localhost:5173
+      PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
 
 volumes:
   mysql-data:
