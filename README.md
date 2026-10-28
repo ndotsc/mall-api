@@ -97,27 +97,8 @@ password: admin123        # role = 2
 
 登录 `POST /api/auth/login` 拿到 JWT，`Authorization: Bearer <token>` 才能调写接口。
 
-## API 速查
+## 接口文档
 
-| 方法 | 路径 | 说明 | 鉴权 |
-| --- | --- | --- | --- |
-| GET  | `/api/health` | 健康检查 | 公开 |
-| GET  | `/api/products?page&pageSize&keyword` | 商品列表（分页 + 模糊搜索） | 公开 |
-| GET  | `/api/products/:id` | 商品详情 | 公开 |
-| POST | `/api/products` | 新增商品 | admin |
-| PUT  | `/api/products/:id` | 编辑商品（部分更新） | admin |
-| DEL  | `/api/products/:id` | 删除商品 | admin |
-| GET  | `/api/articles?page&pageSize&keyword` | 文章列表 | 公开 |
-| GET  | `/api/articles/:id` | 文章详情 | 公开 |
-| POST | `/api/articles` | 新增文章 | admin |
-| PUT  | `/api/articles/:id` | 编辑文章 | admin |
-| DEL  | `/api/articles/:id` | 删除文章 | admin |
-| GET  | `/api/category` | 分类列表 | 公开 |
-| POST | `/api/auth/register` | 注册（role=1 普通用户） | 公开 |
-| POST | `/api/auth/login` | 登录，返回 token | 公开 |
-| GET  | `/api/auth/me` | 当前用户（token 失效 / 被删返回 401） | 登录 |
-| POST | `/api/orders` | 下单（服务端按库内价重算金额，落 userId） | 登录 |
-| GET  | `/api/orders/:orderNo` | 订单详情（仅本人） | 登录 |
-| POST | `/api/upload` | 单图上传，返回 `{ url: '/uploads/xxx' }` | admin |
+完整接口（认证 / 购物车 / 收货地址 / 订单等的请求、响应、鉴权约定）见 **[API.md](./API.md)**。
 
 金额统一以「分」存储（`price` 单位为分），前端展示时换算为元。

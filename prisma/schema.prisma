@@ -74,6 +74,8 @@ model User {
   role      Int      @default(1)            // 1=普通用户 2=管理员
   nickname  String?
   avatar    String?
+  openid    String?  @unique                // 微信 openid（小程序/App 微信登录）；密码用户为 null
+  unionid   String?                         // 微信 unionid（同主体多应用统一标识，可选）
   createdAt DateTime  @default(now())
 }
 
@@ -83,6 +85,8 @@ model Cart {
   productId Int
   number    Int      @default(1)
   createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Address {
@@ -93,4 +97,6 @@ model Address {
   detail    String
   isDefault Boolean  @default(false)
   createdAt DateTime  @default(now())
+
+  @@index([userId])
 }

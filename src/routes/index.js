@@ -6,6 +6,8 @@ import orderRoutes from './order.js'
 import uploadRoutes from './upload.js'
 import authRoutes from './auth.js'
 import categoryRoutes from './category.js'
+import cartRoutes from './cart.js'
+import addressRoutes from './address.js'
 
 const router = Router()
 
@@ -21,5 +23,7 @@ router.use('/orders', orderRoutes)
 router.use('/upload', uploadRoutes)
 router.use('/auth', authRoutes)
 router.use('/categories', categoryRoutes)
+router.use('/cart', cartRoutes)
+router.use('/addresses', addressRoutes)
 
 export default router
