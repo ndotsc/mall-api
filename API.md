@@ -66,6 +66,32 @@
 
 ---
 
+## 七、分类 Category `/api/categories`（公开）
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | /categories | 公开 | 分类列表，全量返回（无分页） |
+
+## 八、文章 Article `/api/articles`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | /articles | 公开 | 列表，支持 `page` / `pageSize`(≤50) / `keyword` 搜索 |
+| GET | /articles/{id} | 公开 | 文章详情 |
+| POST | /articles | 管理员 | 新建，body `{ "title", "cover", "summary", "content", "status"?: int }`（前四个必填） |
+| PUT | /articles/{id} | 管理员 | 更新，body 同上（字段均可选） |
+| DELETE | /articles/{id} | 管理员 | 删除 |
+
+## 九、文件上传 Upload `/api/upload`（公开）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | /upload | `multipart/form-data`，字段名 `file`；返回 `{ "url": "/uploads/文件名" }` |
+
+> 上传限制：仅允许 `jpg / jpeg / png / gif / webp` 图片，单文件 ≤ 2MB；文件名由服务端生成（防路径穿越）。
+> **安全提示**：当前该接口未加鉴权（任何人可上传），生产环境建议加上 `authRequired` + 上传者归属/配额校验。
+
+---
+
 ### 说明
-- 分类 `/categories`、文章 `/articles`、文件上传 `/upload` 等同遵循上述约定（统一响应 + `authRequired`/`adminRequired` 组合鉴权）；本期 OpenAPI 文档暂未展开这三类，需要时再补。
 - 上方所有端点已与 `GET /api/docs`（OpenAPI）逐条对齐，两份文档保持一致。

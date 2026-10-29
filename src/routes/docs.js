@@ -210,6 +210,78 @@ const spec = {
         responses: { '200': { description: 'order' }, '404': { description: '订单不存在' } },
       },
     },
+    '/categories': {
+      get: { summary: '分类列表（公开，全量返回）', security: [], responses: { '200': { description: 'list' } } },
+    },
+    '/articles': {
+      get: {
+        summary: '文章列表（公开，支持分页 + keyword 搜索）',
+        security: [],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer' } },
+          { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
+          { name: 'keyword', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ list, total, page, pageSize }' } },
+      },
+      post: {
+        summary: '新建文章（需管理员）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['title', 'cover', 'summary', 'content'],
+                properties: {
+                  title: { type: 'string' },
+                  cover: { type: 'string', description: '封面图 URL' },
+                  summary: { type: 'string' },
+                  content: { type: 'string' },
+                  status: { type: 'integer', description: '可选，默认 1' },
+                },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: 'article' }, '403': { description: '无权限' } },
+      },
+    },
+    '/articles/{id}': {
+      get: {
+        summary: '文章详情（公开）',
+        security: [],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { '200': { description: 'article' }, '404': { description: '文章不存在' } },
+      },
+      put: {
+        summary: '更新文章（需管理员，字段可选）',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, cover: { type: 'string' }, summary: { type: 'string' }, content: { type: 'string' }, status: { type: 'integer' } } } } },
+        },
+        responses: { '200': { description: 'article' }, '404': { description: '文章不存在' } },
+      },
+      delete: {
+        summary: '删除文章（需管理员）',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { '200': { description: '{ id }' }, '404': { description: '文章不存在' } },
+      },
+    },
+    '/upload': {
+      post: {
+        summary: '上传图片（multipart/form-data，字段名 file）',
+        security: [],
+        requestBody: {
+          content: { 'multipart/form-data': { schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } } },
+        },
+        responses: {
+          '200': { description: '{ url: "/uploads/文件名" }' },
+          '400': { description: '未收到文件 / 仅支持 jpg png gif webp / 超出 2MB' },
+        },
+      },
+    },
   },
 }
 
