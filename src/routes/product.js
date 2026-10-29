@@ -21,7 +21,12 @@ router.get('/', async (req, res) => {
   const keyword = req.query.keyword?.toString().trim()
   const where = keyword ? { name: { contains: keyword } } :  {}
   const [list, total] = await Promise.all([
-    prisma.product.findMany({ where, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.product.findMany({
+      where,
+      orderBy: { createdAt: 'desc' }, // 默认按创建时间倒序，保证列表稳定
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
     prisma.product.count({ where }),
   ])
   ok(res, { list, total, page, pageSize })

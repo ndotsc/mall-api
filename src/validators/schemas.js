@@ -39,6 +39,11 @@ export const orderCreateSchema = z.object({
   remark: z.string().optional(),
 })
 
+// 订单状态变更：1待付款 2待发货 3待收货 4已完成 5已取消
+export const orderStatusSchema = z.object({
+  status: z.coerce.number().int().min(1).max(5, { message: '状态无效' }),
+})
+
 // 账号
 export const registerSchema = z.object({
   username: z.string().min(3, { message: '用户名至少 3 个字符' }).max(32, { message: '用户名至多 32 个字符' }),

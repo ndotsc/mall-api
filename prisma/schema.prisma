@@ -94,6 +94,9 @@ model Address {
   userId    Int
   name      String
   phone     String
+  province  String?
+  city      String?
+  district  String?
   detail    String
   isDefault Boolean  @default(false)
   createdAt DateTime  @default(now())

@@ -1,7 +1,5 @@
 # mall-api
 
-![CI](https://github.com/ndotsc/mall-api/actions/workflows/ci.yml/badge.svg)
-
 小型商城后端：Express 5 + Prisma 6 + MySQL。提供商品 / 文章 / 分类 / 订单 / 鉴权 / 上传接口，写接口需管理员 JWT。
 
 ## 环境要求
@@ -55,6 +53,49 @@ pnpm prisma:studio     # 浏览器打开 Prisma Studio 查看 / 编辑数据
 
 > 不想本地装 MySQL？`docker compose up -d` 会按 `docker-compose.yml` 起一个 MySQL 8 容器（库 `mall`、账号 `mall/mall123`），开箱即用。
 
+### 3.1 修改表结构的安全流程（本机必读）
+
+> ⚠️ **不要用 `pnpm prisma:migrate`（`migrate dev`）在本机改表！** 它在本地 MySQL 上会卡死（疑似 shadow database 创建挂住 / 弹重置交互），一旦被中断，会出现「库已改但迁移记录没写」的漂移，后续 `migrate deploy` 会重复执行同名迁移报错。
+
+**本机安全落地 schema 变更的标准三步法：**
+
+1. 改 `prisma/schema.prisma`（加字段 / 索引 / 模型）。
+2. 用 **raw SQL** 真正改库（推荐写个一次性 `node` 脚本，先查后改、幂等）：
+   ```js
+   // _alter.mjs（跑完即删）
+   import prisma from './src/prisma.js'
+   await prisma.$executeRawUnsafe(`ALTER TABLE \`User\` ADD COLUMN \`openid\` VARCHAR(191)`)
+   await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX \`User_openid_key\` ON \`User\`(\`openid\`)`)
+   await prisma.$disconnect()
+   ```
+3. 写迁移文件（只生成、不执行、不弹窗）：
+   ```bash
+   pnpm prisma:migrate --create-only --name add_user_openid
+   ```
+   如果第 2 步已经手动改过库，就**别让 `migrate` 再执行**，直接手写 `prisma/migrations/<时间戳>_<名>/migration.sql`，内容与第 2 步的 SQL 一致。
+4. 把这条迁移**标记为已应用**（只写 `_prisma_migrations` 记录，不执行 SQL，避免重复建表/建索引）：
+   ```bash
+   pnpm exec prisma migrate resolve --applied <完整目录名，如 20261028150000_add_user_openid>
+   ```
+5. 重新生成 Prisma Client（让代码认识新字段，这一步不碰库）：
+   ```bash
+   pnpm prisma:generate
+   ```
+
+**要点澄清：**
+
+| 命令 | 是否改库 | 说明 |
+|---|---|---|
+| `pnpm prisma:generate` | ❌ | 只生成 Client（TS 类型 + 查询函数） |
+| `pnpm prisma:migrate`（`migrate dev`） | ✅ 但本机卡死 | 开发用，本机禁用 |
+| `pnpm migrate:deploy` | ✅ | 生产用，执行未应用的迁移文件 |
+| raw SQL（`ALTER TABLE` / `CREATE INDEX`） | ✅ | **本机真正改库的就是它** |
+| `migrate resolve --applied <名>` | ❌ | 只把「我手动改过了」记到迁移历史 |
+
+- **`AUTO_INCREMENT` 不会回退**：即使 `DELETE` 测试数据，自增 id 也不会归零，留下「空洞」无害（id 只是主键，不代表行数）。
+- **生产环境**用 `pnpm migrate:deploy` 跑迁移文件；本地这套 raw SQL 流程是为了绕过本机 `migrate dev` 卡死，二者不要混用。
+- 自查：`pnpm prisma:studio` 看数据；或用 `SHOW TABLES` / `SHOW INDEX FROM <表>` 核对表结构。
+
 ## 4. 运行
 
 ```bash
@@ -73,11 +114,14 @@ pnpm add -D prisma         # 开发依赖
 
 - **安全响应头**：`helmet` 默认开启（图片经代理/跨域加载，已放开 CORP）。
 - **跨域白名单**：`cors` 仅放行 `CORS_ORIGINS` 配置的来源，不再全开。
-- **防爆破**：`/api/auth/login` 与 `/register` 限流（同 IP 15 分钟最多 10 次，超限 429）。
+- **限流**：全局限流（除 `/api/health` 外，每 IP 15 分钟最多 200 次，超限 429）+ 登录/注册更严格限流（15 分钟最多 10 次）。限流为进程内计数，**多实例部署需换 Redis**。
+- **请求体 / 上传限制**：`express.json` / `urlencoded` 限制 `1mb`；上传仅允许图片类型，单文件 ≤ 2MB，文件名由服务端生成（防路径穿越）。
 - **输入校验**：所有写接口用 `zod` 校验入参，失败统一返回 400 并给出具体字段原因。
 - **统一错误**：`AppError` 携带 status/code，由 `errorHandler` 统一输出；全局只有 `response.js` 出现 `res.json`。
 - **权限隔离**：商品/文章写接口需 `authRequired + adminRequired`；订单金额由服务端按库内价重算，下单后按 `userId` 隔离查询（普通用户只能看自己的订单）。
+- **注销能力**：`/api/auth/logout` 将当前 token 的 `jti` 拉黑使其立即失效（内存黑名单，**重启即清空、多实例不共享**，生产请换 Redis）。
 - **启动校验**：缺少 `JWT_SECRET` / `DATABASE_URL` 直接报错退出。
+- **日志**：结构化日志（控制台 + 可选文件），错误日志附脱敏请求体；`LOG_BODY=true` 才记录请求参数（默认关闭，避免泄露密码 / token）。
 
 ## 测试
 
@@ -96,6 +140,23 @@ password: admin123        # role = 2
 ```
 
 登录 `POST /api/auth/login` 拿到 JWT，`Authorization: Bearer <token>` 才能调写接口。
+
+## 生产化清单（已做 / 待做）
+
+按优先级梳理的可上生产前的补齐项（高优先级基本已落地）：
+
+| 优先级 | 项 | 状态 |
+|---|---|---|
+| 高 | 全局限流 | ✅ 已做（进程内，多实例需换 Redis） |
+| 高 | 请求体 / 上传大小与类型限制 | ✅ 已做（1mb 请求体、2MB 图片、类型白名单） |
+| 高 | JWT 注销黑名单 | ✅ 已做（`/api/auth/logout`，内存版） |
+| 中 | 数据库连接池调优 | ✅ 已说明（`DATABASE_URL` 加 `?connection_limit=10`，见 `.env.example`） |
+| 中 | 监控 / APM | ⏳ 可选：接入 Sentry / Prometheus，目前仅结构化日志 |
+| 中 | 自动化测试 + CI/CD | ✅ 已有 `tests/api.test.js` + `.github/workflows/ci.yml`（MySQL 服务容器 + vitest） |
+| 中 | Docker / 部署编排 | ✅ 已有 `Dockerfile`（多阶段）+ `docker-compose.yml`（MySQL） |
+| 低 | 审计日志 / 软删除 / OpenAPI / 列表默认排序上限 | ⚠️ 部分：列表已默认排序 + 上限；审计日志、软删除、OpenAPI 待补 |
+
+> 注：本机改表结构请走「[3.1 修改表结构的安全流程](#31-修改表结构的安全流程本机必读)」，切勿用 `migrate dev`（本机会卡死）。
 
 ## 接口文档
 

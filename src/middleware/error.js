@@ -1,5 +1,6 @@
 import { fail } from '../utils/response.js'
 import { AppError } from '../utils/AppError.js'
+import { logger, redact } from '../utils/logger.js'
 
 // 404 兜底：放在所有路由之后（见 app.js）
 // 自己造一个带 status/code 的错误，交给下面的 errorHandler 统一输出
@@ -13,7 +14,20 @@ export function errorHandler(err, req, res, next) {
   const code = err.code ?? status
   const message = err.message || '服务器内部错误'
 
-  console.error('[error]', req.method, req.originalUrl, '=>', message)
+  // 带上 req.id 方便在日志系统里串联同一次请求的其他记录
+  // 出错时记脱敏后的请求体，便于排查「到底传了什么才报错」
+  // 非生产环境额外附上堆栈
+  const meta = {
+    id: req.id,
+    method: req.method,
+    url: req.originalUrl,
+    status,
+    body: redact(req.body),
+  }
+  if (process.env.NODE_ENV !== 'production' && err.stack) {
+    meta.stack = err.stack
+  }
+  logger.error(message, meta)
 
   // 复用统一响应，res.json 仍只在 response.js 出现
   fail(res, status, message, code)

@@ -4,7 +4,7 @@ import prisma from '../prisma.js'
 import { authRequired } from '../middleware/auth.js'
 import { AppError } from '../utils/AppError.js'
 import { validateBody } from '../middleware/validate.js'
-import { orderCreateSchema } from '../validators/schemas.js'
+import { orderCreateSchema, orderStatusSchema } from '../validators/schemas.js'
 
 const router = Router()
 
@@ -45,6 +45,29 @@ router.post('/', authRequired, validateBody(orderCreateSchema), async (req, res)
   ok(res, { orderNo: order.orderNo })
 })
 
+// 订单列表：普通用户只看自己的；管理员看全部。支持按 status 过滤 + 分页
+// GET /api/orders?status=1&page=1&pageSize=20
+router.get('/', authRequired, async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const pageSize = Math.min(Math.max(1, Number(req.query.pageSize) || 20), 100)
+  const status = req.query.status ? Number(req.query.status) : undefined
+  const where = {}
+  if (req.user.role !== 2) where.userId = req.user.userId
+  if (status) where.status = status
+
+  const [list, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { items: true },
+    }),
+    prisma.order.count({ where }),
+  ])
+  ok(res, { list, total, page, pageSize })
+})
+
 router.get('/:orderNo', authRequired, async (req, res) => {
   const where = { orderNo: req.params.orderNo }
   if (req.user.role !== 2) where.userId = req.user.userId
@@ -56,6 +79,23 @@ router.get('/:orderNo', authRequired, async (req, res) => {
     throw new AppError('订单不存在', 404, 404)
   }
   ok(res, order)
+})
+
+// 订单状态变更：本人（或管理员）可改。仅更新 status，不做流转校验（演示用）
+// PATCH /api/orders/:orderNo/status  { status: 2 }
+router.patch('/:orderNo/status', authRequired, validateBody(orderStatusSchema), async (req, res) => {
+  const where = { orderNo: req.params.orderNo }
+  if (req.user.role !== 2) where.userId = req.user.userId
+  const order = await prisma.order.findUnique({ where })
+  if (!order) {
+    throw new AppError('订单不存在', 404, 404)
+  }
+  const updated = await prisma.order.update({
+    where: { id: order.id },
+    data: { status: req.validated.status },
+    include: { items: true },
+  })
+  ok(res, updated)
 })
 
 export default router

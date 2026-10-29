@@ -7,6 +7,7 @@ import { validateBody } from '../middleware/validate.js'
 import { AppError } from '../utils/AppError.js'
 import { registerSchema, loginSchema, wxLoginSchema, wxOauthSchema } from '../validators/schemas.js'
 import { code2Session, oauthAccessToken } from '../utils/wechat.js'
+import { blacklistAdd } from '../utils/blacklist.js'
 
 const router = Router()
 
@@ -93,6 +94,13 @@ router.get('/me', authRequired, async (req, res) => {
         throw new AppError('用户不存在或已被删除', 401, 401)
     }
     ok(res, user)
+})
+
+// 注销登录：把当前 token 的 jti 拉黑，token 在过期前立即失效（主动登出能力）
+// 前端应在收到成功后清掉本地 token（见前端 auth store 的 logout）
+router.post('/logout', authRequired, async (req, res) => {
+    blacklistAdd(req.user.jti, req.user.exp)
+    ok(res, { success: true })
 })
 
 export default router

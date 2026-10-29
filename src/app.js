@@ -2,8 +2,11 @@ import 'dotenv/config'
 import express from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
+import crypto from 'crypto'
 import routes from './routes/index.js'
 import { notFound, errorHandler } from './middleware/error.js'
+import { globalLimiter } from './middleware/rateLimit.js'
+import { logger, redact } from './utils/logger.js'
 import path from 'path'
 
 // app.js 只负责「组装应用」，不负责启动（启动在 server.js）
@@ -20,8 +23,36 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
 app.use(cors({ origin: allowedOrigins }))
 
 // 3. 解析 JSON 请求体（前端 POST 的 JSON 靠它才能被 req.body 读到）
-//    必须放在路由之前，否则路由里读不到 body
-app.use(express.json())
+//    必须放在路由之前，否则路由里读不到 body；限制体积防超大请求打爆内存
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ limit: '1mb', extended: true }))
+
+// 3.4 全局限流（健康检查除外）
+app.use(globalLimiter)
+
+// 3.5 请求 ID + 访问日志：给每个请求分配 uuid，响应结束后记录方法/路径/状态码/耗时/IP
+//     方便在生产环境按 req.id 串联一次请求内的所有日志（含报错）
+//     请求体 / 查询参数默认不记（避免把密码、token 写进日志）；设 LOG_BODY=true 才记（已脱敏）
+app.use((req, res, next) => {
+  req.id = crypto.randomUUID()
+  const start = Date.now()
+  res.on('finish', () => {
+    const meta = {
+      id: req.id,
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      ms: Date.now() - start,
+      ip: req.ip,
+    }
+    if (logger.shouldLogBody()) {
+      meta.body = redact(req.body)
+      meta.query = redact(req.query)
+    }
+    logger.info('request', meta)
+  })
+  next()
+})
 
 // 健康检查：部署平台（Railway / Render / Nginx）靠它判断实例是否存活
 // 放在业务路由之前，避免被 /api 前缀或 404 兜底拦截
