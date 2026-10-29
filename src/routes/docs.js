@@ -12,8 +12,16 @@ const spec = {
   info: {
     title: 'mall-api 接口文档',
     version: '1.0.0',
-    description:
-      '小型商城后端：商品 / 文章 / 分类 / 订单 / 鉴权 / 上传。金额统一以「分」存储（price 单位分）。',
+    description: [
+      '小型商城后端：商品 / 文章 / 分类 / 订单 / 鉴权 / 上传。',
+      '',
+      '## 全局约定',
+      '- **基础路径**：所有接口以 `/api` 开头（如 `/api/products`）。',
+      '- **统一响应信封**：`{ "code": 0, "message": "ok", "data": ... }`；业务错误时 `code` 同 HTTP 状态码（400/401/403/404…），`message` 为错误描述。',
+      '- **鉴权**：需登录的接口在请求头带 `Authorization: Bearer <token>`；标注「公开」的无需鉴权。',
+      '- **金额单位**：所有 `price` / `totalAmount` 等金额字段单位均为**分**，前端展示请 ÷100（如 9900 分 = ¥99.00）。',
+      '- **分页**：列表接口统一支持 `page` / `pageSize`（上限见各接口），返回 `{ list, total, page, pageSize }`。',
+    ].join('\n'),
   },
   servers: [
     { url: process.env.PUBLIC_BASE_URL || 'http://localhost:3000/api', description: '默认 / 本地' },
@@ -23,11 +31,43 @@ const spec = {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
     },
     schemas: {
+      ApiResponse: {
+        type: 'object',
+        description: '统一响应信封：data 为各接口实际返回数据',
+        properties: {
+          code: { type: 'integer', example: 0 },
+          message: { type: 'string', example: 'ok' },
+          data: {},
+        },
+      },
       Error: {
         type: 'object',
         properties: {
-          code: { type: 'integer' },
-          message: { type: 'string' },
+          code: { type: 'integer', example: 404 },
+          message: { type: 'string', example: '资源不存在' },
+        },
+      },
+      Category: {
+        type: 'object',
+        description: '商品分类',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          name: { type: 'string', example: '手机数码' },
+          sort: { type: 'integer', example: 0, description: '排序权重，越小越靠前' },
+        },
+      },
+      Article: {
+        type: 'object',
+        description: '文章',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          title: { type: 'string', example: 'Vue3 组合式 API 入门' },
+          cover: { type: 'string', nullable: true, example: '/uploads/xxx.jpg', description: '封面图 URL' },
+          summary: { type: 'string', nullable: true, example: 'ref 与 reactive 的区别' },
+          content: { type: 'string', example: '正文内容…' },
+          status: { type: 'integer', example: 1, description: '1=正常' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
         },
       },
     },
@@ -211,7 +251,25 @@ const spec = {
       },
     },
     '/categories': {
-      get: { summary: '分类列表（公开，全量返回）', security: [], responses: { '200': { description: 'list' } } },
+      get: {
+        summary: '分类列表（公开，全量返回）',
+        security: [],
+        responses: {
+          '200': {
+            description: '统一响应信封，data 为分类数组',
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/ApiResponse' },
+                    { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/Category' } } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
     },
     '/articles': {
       get: {
@@ -222,7 +280,34 @@ const spec = {
           { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
           { name: 'keyword', in: 'query', schema: { type: 'string' } },
         ],
-        responses: { '200': { description: '{ list, total, page, pageSize }' } },
+        responses: {
+          '200': {
+            description: '统一响应信封，data 为 { list: Article[], total, page, pageSize }',
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/ApiResponse' },
+                    {
+                      type: 'object',
+                      properties: {
+                        data: {
+                          type: 'object',
+                          properties: {
+                            list: { type: 'array', items: { $ref: '#/components/schemas/Article' } },
+                            total: { type: 'integer' },
+                            page: { type: 'integer' },
+                            pageSize: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
       },
       post: {
         summary: '新建文章（需管理员）',
@@ -244,7 +329,13 @@ const spec = {
             },
           },
         },
-        responses: { '200': { description: 'article' }, '403': { description: '无权限' } },
+        responses: {
+          '200': {
+            description: '统一响应信封，data 为新建的文章',
+            content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/ApiResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Article' } } }] } } },
+          },
+          '403': { description: '无权限' },
+        },
       },
     },
     '/articles/{id}': {
@@ -252,7 +343,13 @@ const spec = {
         summary: '文章详情（公开）',
         security: [],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-        responses: { '200': { description: 'article' }, '404': { description: '文章不存在' } },
+        responses: {
+          '200': {
+            description: '统一响应信封，data 为文章',
+            content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/ApiResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Article' } } }] } } },
+          },
+          '404': { description: '文章不存在' },
+        },
       },
       put: {
         summary: '更新文章（需管理员，字段可选）',
@@ -261,7 +358,13 @@ const spec = {
           required: true,
           content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, cover: { type: 'string' }, summary: { type: 'string' }, content: { type: 'string' }, status: { type: 'integer' } } } } },
         },
-        responses: { '200': { description: 'article' }, '404': { description: '文章不存在' } },
+        responses: {
+          '200': {
+            description: '统一响应信封，data 为更新后的文章',
+            content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/ApiResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Article' } } }] } } },
+          },
+          '404': { description: '文章不存在' },
+        },
       },
       delete: {
         summary: '删除文章（需管理员）',
