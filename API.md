@@ -40,8 +40,9 @@
 |---|---|---|
 | GET | /cart | 我的购物车，每项带 `product` 快照 |
 | POST | /cart | 加入，body `{ "productId": int, "number"?: int(≤99) }`，同一商品数量累加 |
-| PUT | /cart/{productId} | 改数量，body `{ "number": int(≤99) }` |
-| DELETE | /cart/{productId} | 移除一项 |
+| PUT | /cart/{id} | 改数量（**id 为购物车项 id，非商品 id**），body `{ "number": int(≤99) }` |
+| DELETE | /cart/{id} | 移除一项 |
+| DELETE | /cart | 清空我的购物车，返回 `{ "count": int }` |
 
 ## 五、收货地址 Address `/api/addresses`（Bearer）
 
@@ -49,6 +50,8 @@
 |---|---|---|
 | GET | /addresses | 我的地址列表，默认地址排第一 |
 | POST | /addresses | 新增，body `{ "name", "phone", "detail", "isDefault"?: bool }`；`isDefault=true` 自动取消该用户其它默认地址（事务保证唯一） |
+| PUT | /addresses/{id} | 修改，body 同新增（各字段均可选）；`isDefault=true` 自动取消该用户其它默认地址（排除自身，事务保证唯一） |
+| DELETE | /addresses/{id} | 删除；若删的是默认地址，自动把剩余第一条提升为默认 |
 
 > 字段校验：`phone` 须大陆 11 位 `/^1[3-9]\d{9}$/`；`name` 1–20 字，`detail` 1–200 字。
 
@@ -58,9 +61,11 @@
 |---|---|---|
 | GET | /orders | 我的订单列表（管理员可查全部），支持 `status` 过滤与分页 |
 | POST | /orders | 下单，body `{ "items":[{"productId":int,"number":int}], "info":{"name","phone","address"}, "payType":"wechat", "remark"? }`；**服务端按库内价重算金额**，不信任前端传价 |
+| GET | /orders/{orderNo} | 订单详情（含 items） |
+| PATCH | /orders/{orderNo}/status | 改状态，body `{ "status": int }`；状态枚举：**1 待付款 / 2 待发货 / 3 待收货 / 4 待评价 / 5 已完成**（演示用，未做流转校验） |
 
 ---
 
 ### 说明
-- 分类 `/categories`、文章 `/articles`、文件上传 `/upload` 等同遵循上述约定（统一响应 + `authRequired`/`adminRequired` 组合鉴权）。
-- 代码中另已实现、但暂未列入上方简化版与 OpenAPI 的扩展接口（地址改/删、订单详情、订单状态流转、购物车清空），将在补齐 OpenAPI 后同步至此。
+- 分类 `/categories`、文章 `/articles`、文件上传 `/upload` 等同遵循上述约定（统一响应 + `authRequired`/`adminRequired` 组合鉴权）；本期 OpenAPI 文档暂未展开这三类，需要时再补。
+- 上方所有端点已与 `GET /api/docs`（OpenAPI）逐条对齐，两份文档保持一致。

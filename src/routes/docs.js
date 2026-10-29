@@ -118,20 +118,97 @@ const spec = {
       delete: { summary: '删除商品（软删除，需管理员）', responses: { '200': { description: '已删除' } } },
     },
     '/cart': {
-      get: { summary: '我的购物车', responses: { '200': { description: 'items' } } },
-      post: { summary: '加入购物车', responses: { '200': { description: 'ok' } } },
+      get: { summary: '我的购物车', responses: { '200': { description: 'items（含商品快照）' } } },
+      post: {
+        summary: '加入购物车（同商品累加数量）',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { productId: { type: 'integer' }, number: { type: 'integer' } } } } },
+        },
+        responses: { '200': { description: 'cart item' }, '400': { description: '商品不存在或已下架' } },
+      },
+      delete: { summary: '清空购物车', responses: { '200': { description: '{ count }' } } },
     },
-    '/cart/{productId}': {
-      put: { summary: '改数量', responses: { '200': { description: 'ok' } } },
-      delete: { summary: '移除', responses: { '200': { description: 'ok' } } },
+    '/cart/{id}': {
+      put: { summary: '改数量（直接设为传入值）', responses: { '200': { description: 'cart item' }, '404': { description: '购物车项不存在' } } },
+      delete: { summary: '移除某一项', responses: { '200': { description: '{ id }' }, '404': { description: '购物车项不存在' } } },
     },
     '/addresses': {
-      get: { summary: '我的地址列表', responses: { '200': { description: 'list' } } },
-      post: { summary: '新增地址', responses: { '200': { description: 'address' } } },
+      get: { summary: '我的地址列表（默认地址排最前）', responses: { '200': { description: 'list' } } },
+      post: {
+        summary: '新增地址（设默认时自动取消其它默认）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'phone', 'detail'],
+                properties: { name: { type: 'string' }, phone: { type: 'string' }, detail: { type: 'string' }, isDefault: { type: 'boolean' } },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: 'address' } },
+      },
+    },
+    '/addresses/{id}': {
+      put: {
+        summary: '修改地址（设默认时自动取消其它默认）',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, detail: { type: 'string' }, isDefault: { type: 'boolean' } } } } },
+        },
+        responses: { '200': { description: 'address' }, '404': { description: '地址不存在' } },
+      },
+      delete: {
+        summary: '删除地址（删默认则自动提升第一条为默认）',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { '200': { description: '{ id }' }, '404': { description: '地址不存在' } },
+      },
     },
     '/orders': {
-      get: { summary: '我的订单列表', responses: { '200': { description: 'list' } } },
-      post: { summary: '下单（金额服务端重算）', responses: { '200': { description: 'orderNo' } } },
+      get: { summary: '我的订单列表（支持 status 过滤 + 分页）', responses: { '200': { description: '{ list, total, page, pageSize }' } } },
+      post: {
+        summary: '下单（金额服务端重算）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['items', 'info'],
+                properties: {
+                  items: { type: 'array', items: { type: 'object', properties: { productId: { type: 'integer' }, number: { type: 'integer' } } } },
+                  info: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, address: { type: 'string' } } },
+                  payType: { type: 'string', description: '默认 wechat' },
+                  remark: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: '{ orderNo }' }, '400': { description: '商品不存在或已下架' } },
+      },
+    },
+    '/orders/{orderNo}': {
+      get: {
+        summary: '订单详情',
+        parameters: [{ name: 'orderNo', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'order（含 items）' }, '404': { description: '订单不存在' } },
+      },
+    },
+    '/orders/{orderNo}/status': {
+      patch: {
+        summary: '修改订单状态（status: 1待付款 2待发货 3待收货 4待评价 5已完成）',
+        parameters: [{ name: 'orderNo', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'integer', enum: [1, 2, 3, 4, 5] } } } } },
+        },
+        responses: { '200': { description: 'order' }, '404': { description: '订单不存在' } },
+      },
     },
   },
 }
