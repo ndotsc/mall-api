@@ -20,7 +20,7 @@ export function signToken(payload) {
     return jwt.sign({ jti: crypto.randomUUID(), ...payload }, SECRET, { expiresIn: '7d' })
 }
 
-export function authRequired(req, res, next) {
+export async function authRequired(req, res, next) {
     const header = req.headers.authorization || ''
     const token = header.startsWith('Bearer ') ? header.slice(7) : ''
     if (!token) {
@@ -29,7 +29,7 @@ export function authRequired(req, res, next) {
     try {
         const payload = jwt.verify(token, SECRET)
         // 注销后该 jti 会被拉黑，立即失效
-        if (blacklistHas(payload.jti)) {
+        if (await blacklistHas(payload.jti)) {
             return next(new AppError('登录已失效，请重新登录', 401, 401))
         }
         // 把 jti / exp 透传给后续逻辑（logout 时要用 jti 拉黑）

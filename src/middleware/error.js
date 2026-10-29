@@ -1,6 +1,7 @@
 import { fail } from '../utils/response.js'
 import { AppError } from '../utils/AppError.js'
 import { logger, redact } from '../utils/logger.js'
+import { captureError } from '../utils/sentry.js'
 
 // 404 兜底：放在所有路由之后（见 app.js）
 // 自己造一个带 status/code 的错误，交给下面的 errorHandler 统一输出
@@ -28,6 +29,10 @@ export function errorHandler(err, req, res, next) {
     meta.stack = err.stack
   }
   logger.error(message, meta)
+
+  // 可选 APM：装了 @sentry/node 且配置了 SENTRY_DSN 时，把异常上报到 Sentry
+  // （未装则 captureError 内部 no-op，不影响主流程）
+  captureError(err, { reqId: req.id, method: req.method, url: req.originalUrl })
 
   // 复用统一响应，res.json 仍只在 response.js 出现
   fail(res, status, message, code)

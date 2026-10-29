@@ -1,22 +1,18 @@
-// 已注销 token 的黑名单（内存版）
-// 注销登录时把 token 的 jti 记进来，直到 token 原定的过期时间为止
-//
-// ⚠️ 局限：内存存储，服务重启即清空；且多实例部署时各实例不共享。
-// 生产多实例请改用 Redis（SET jti 1 EX ttl），这里保留接口语义即可平滑替换。
-const blacklist = new Map() // jti -> 过期时间戳(ms)
+import { kvSet, kvGet } from './kvStore.js'
 
-export function blacklistAdd(jti, exp) {
-  if (!jti || !exp) return
-  blacklist.set(jti, exp * 1000)
+// 已注销 token 的黑名单。
+// 注销登录时把 token 的 jti 记进来，直到 token 原定的过期时间为止即自动失效。
+//
+// 存储后端：默认进程内 Map；若配置了 REDIS_URL 且装了 ioredis，则自动走 Redis，
+// 多实例部署时各实例共享（否则重启清空、多实例互不可见）。详见 kvStore.js。
+export async function blacklistAdd(jti, expSec) {
+  if (!jti || !expSec) return
+  const ttl = expSec * 1000 - Date.now()
+  if (ttl <= 0) return // 已过期，无需记录
+  await kvSet(`bl:${jti}`, '1', ttl)
 }
 
-export function blacklistHas(jti) {
+export async function blacklistHas(jti) {
   if (!jti) return false
-  const exp = blacklist.get(jti)
-  if (exp === undefined) return false
-  if (Date.now() > exp) {
-    blacklist.delete(jti) // 已过期，顺手清理
-    return false
-  }
-  return true
+  return (await kvGet(`bl:${jti}`)) != null
 }

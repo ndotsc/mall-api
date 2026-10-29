@@ -20,7 +20,10 @@ model Product {
   desc      String?
   categoryId Int?
   category Category? @relation(fields: [categoryId], references: [id])
+  deletedAt DateTime? // 软删除标记：非 null 表示已删除（查询自动过滤）
   createdAt DateTime @default(now())
+
+  @@index([deletedAt])
 }
 
 model Article {
@@ -76,7 +79,10 @@ model User {
   avatar    String?
   openid    String?  @unique                // 微信 openid（小程序/App 微信登录）；密码用户为 null
   unionid   String?                         // 微信 unionid（同主体多应用统一标识，可选）
+  deletedAt DateTime?                       // 软删除标记：非 null 表示已删除（查询自动过滤）
   createdAt DateTime  @default(now())
+
+  @@index([deletedAt])
 }
 
 model Cart {

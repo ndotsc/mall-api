@@ -8,6 +8,7 @@ import authRoutes from './auth.js'
 import categoryRoutes from './category.js'
 import cartRoutes from './cart.js'
 import addressRoutes from './address.js'
+import docsRoutes from './docs.js'
 
 const router = Router()
 
@@ -25,5 +26,6 @@ router.use('/auth', authRoutes)
 router.use('/categories', categoryRoutes)
 router.use('/cart', cartRoutes)
 router.use('/addresses', addressRoutes)
+router.use('/docs', docsRoutes) // 接口文档：/api/docs 与 /api/docs/openapi.json
 
 export default router

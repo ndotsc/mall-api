@@ -66,8 +66,9 @@ router.delete('/:id', authRequired, adminRequired, async (req, res) => {
   const id = Number(req.params.id)
   const exists = await prisma.product.findUnique({ where: { id } })
   if (!exists) throw new AppError('商品不存在', 404, 404)
-  await prisma.product.delete({ where: { id } })
-  ok(res, { id })
+  // 软删除：置 deletedAt，而非物理删除（查询层已自动过滤 deletedAt != null 的记录）
+  await prisma.product.update({ where: { id }, data: { deletedAt: new Date() } })
+  ok(res, { id, deleted: true })
 })
 
 export default router

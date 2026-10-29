@@ -6,6 +6,7 @@ import crypto from 'crypto'
 import routes from './routes/index.js'
 import { notFound, errorHandler } from './middleware/error.js'
 import { globalLimiter } from './middleware/rateLimit.js'
+import { auditLog } from './middleware/audit.js'
 import { logger, redact } from './utils/logger.js'
 import path from 'path'
 
@@ -53,6 +54,10 @@ app.use((req, res, next) => {
   })
   next()
 })
+
+// 3.6 审计日志：仅对写操作（POST/PUT/PATCH/DELETE）在响应后记录 操作人/状态/耗时，
+//     供合规追溯。它依赖前面的 req.id，且能在响应阶段读到 auth 中间件写入的 req.user。
+app.use(auditLog)
 
 // 健康检查：部署平台（Railway / Render / Nginx）靠它判断实例是否存活
 // 放在业务路由之前，避免被 /api 前缀或 404 兜底拦截

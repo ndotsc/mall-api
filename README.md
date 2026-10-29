@@ -119,7 +119,12 @@ pnpm add -D prisma         # 开发依赖
 - **输入校验**：所有写接口用 `zod` 校验入参，失败统一返回 400 并给出具体字段原因。
 - **统一错误**：`AppError` 携带 status/code，由 `errorHandler` 统一输出；全局只有 `response.js` 出现 `res.json`。
 - **权限隔离**：商品/文章写接口需 `authRequired + adminRequired`；订单金额由服务端按库内价重算，下单后按 `userId` 隔离查询（普通用户只能看自己的订单）。
-- **注销能力**：`/api/auth/logout` 将当前 token 的 `jti` 拉黑使其立即失效（内存黑名单，**重启即清空、多实例不共享**，生产请换 Redis）。
+- **注销能力**：`/api/auth/logout` 将当前 token 的 `jti` 拉黑使其立即失效（默认内存黑名单；**配了 `REDIS_URL` 且装了 `ioredis` 则自动走 Redis**，多实例共享）。
+- **审计日志**：所有写操作（POST/PUT/PATCH/DELETE）在响应后记录一条 `audit` 日志（操作人 / 状态 / 耗时 / IP / 请求ID），供合规追溯；只读请求不记，不记请求体（防敏感信息落盘）。
+- **软删除**：`User` / `Product` 增加 `deletedAt` 字段，查询层经 Prisma 扩展自动过滤已删除记录；商品删除接口改为置 `deletedAt`（而非物理删除）。
+- **限流存储可插拔**：全局限流与登录限流默认进程内计数；配 `REDIS_URL`（+`ioredis`）后自动改走 Redis，多实例一致。
+- **接口文档**：访问 `/api/docs`（Swagger UI）或 `/api/docs/openapi.json`（机器可读 OpenAPI 3.0），与 [API.md](./API.md) 互补。
+- **可选 APM**：配 `SENTRY_DSN`（+`@sentry/node`）后自动上报异常到 Sentry；未装则无副作用。
 - **启动校验**：缺少 `JWT_SECRET` / `DATABASE_URL` 直接报错退出。
 - **日志**：结构化日志（控制台 + 可选文件），错误日志附脱敏请求体；`LOG_BODY=true` 才记录请求参数（默认关闭，避免泄露密码 / token）。
 
@@ -147,14 +152,17 @@ password: admin123        # role = 2
 
 | 优先级 | 项 | 状态 |
 |---|---|---|
-| 高 | 全局限流 | ✅ 已做（进程内，多实例需换 Redis） |
+| 高 | 全局限流 | ✅ 已做（进程内；配 `REDIS_URL` 自动改走 Redis） |
 | 高 | 请求体 / 上传大小与类型限制 | ✅ 已做（1mb 请求体、2MB 图片、类型白名单） |
-| 高 | JWT 注销黑名单 | ✅ 已做（`/api/auth/logout`，内存版） |
+| 高 | JWT 注销黑名单 | ✅ 已做（`/api/auth/logout`；配 `REDIS_URL` 自动走 Redis 共享） |
 | 中 | 数据库连接池调优 | ✅ 已说明（`DATABASE_URL` 加 `?connection_limit=10`，见 `.env.example`） |
-| 中 | 监控 / APM | ⏳ 可选：接入 Sentry / Prometheus，目前仅结构化日志 |
+| 中 | 监控 / APM | ✅ 可选：配 `SENTRY_DSN` + `@sentry/node` 自动上报 Sentry；默认无依赖 |
 | 中 | 自动化测试 + CI/CD | ✅ 已有 `tests/api.test.js` + `.github/workflows/ci.yml`（MySQL 服务容器 + vitest） |
 | 中 | Docker / 部署编排 | ✅ 已有 `Dockerfile`（多阶段）+ `docker-compose.yml`（MySQL） |
-| 低 | 审计日志 / 软删除 / OpenAPI / 列表默认排序上限 | ⚠️ 部分：列表已默认排序 + 上限；审计日志、软删除、OpenAPI 待补 |
+| 中 | 审计日志 | ✅ 已做（写操作自动记 `audit` 日志） |
+| 中 | 软删除 | ✅ 已做（`User`/`Product` 的 `deletedAt` + Prisma 扩展自动过滤） |
+| 中 | OpenAPI / 接口文档 | ✅ 已做（`/api/docs` Swagger UI + `/api/docs/openapi.json`） |
+| 低 | 列表默认排序 + 上限 | ✅ 已做（商品按时间倒序，pageSize 上限 50） |
 
 > 注：本机改表结构请走「[3.1 修改表结构的安全流程](#31-修改表结构的安全流程本机必读)」，切勿用 `migrate dev`（本机会卡死）。
 
