@@ -70,6 +70,26 @@ const spec = {
           updatedAt: { type: 'string', format: 'date-time' },
         },
       },
+      Review: {
+        type: 'object',
+        description: '商品评价',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          reviewerName: { type: 'string', example: 'u_12***67', description: '评价人用户名（前端展示时已脱敏）' },
+          productId: { type: 'integer', example: 1 },
+          rating: { type: 'integer', example: 5, description: '评分 1-5' },
+          content: { type: 'string', nullable: true, example: '东西不错，物流也快' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      ReviewStats: {
+        type: 'object',
+        description: '某商品的评价统计',
+        properties: {
+          total: { type: 'integer', example: 12, description: '评价总数' },
+          averageRating: { type: 'number', example: 4.5, description: '平均评分（保留 1 位小数）' },
+        },
+      },
     },
   },
   security: [{ bearerAuth: [] }],
@@ -404,6 +424,82 @@ const spec = {
           '200': { description: '{ url: "/uploads/文件名" }' },
           '400': { description: '未收到文件 / 仅支持 jpg png gif webp / 超出 2MB' },
         },
+      },
+    },
+    '/reviews': {
+      get: {
+        summary: '商品评价列表（公开，按商品 + 分页，附带统计）',
+        security: [],
+        parameters: [
+          { name: 'productId', in: 'query', required: true, schema: { type: 'integer' }, description: '商品 ID' },
+          { name: 'page', in: 'query', schema: { type: 'integer' } },
+          { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
+        ],
+        responses: {
+          '200': {
+            description: 'data 为 { list: Review[], total, page, pageSize, stats: ReviewStats }',
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/ApiResponse' },
+                    {
+                      type: 'object',
+                      properties: {
+                        data: {
+                          type: 'object',
+                          properties: {
+                            list: { type: 'array', items: { $ref: '#/components/schemas/Review' } },
+                            total: { type: 'integer' },
+                            page: { type: 'integer' },
+                            pageSize: { type: 'integer' },
+                            stats: { $ref: '#/components/schemas/ReviewStats' },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          '400': { description: '缺少 productId' },
+        },
+      },
+      post: {
+        summary: '提交评价（需登录）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['productId', 'rating'],
+                properties: {
+                  productId: { type: 'integer' },
+                  rating: { type: 'integer', minimum: 1, maximum: 5 },
+                  content: { type: 'string', description: '可选，≤500 字' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'data 为新建的 Review' },
+          '400': { description: '参数错误 / 评分超出 1-5 范围' },
+          '401': { description: '未登录' },
+          '404': { description: '商品不存在' },
+        },
+      },
+    },
+    '/reviews/me': {
+      get: {
+        summary: '我的评价列表（需登录）',
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer' } },
+          { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
+        ],
+        responses: { '200': { description: 'data 为 { list: Review[], total, page, pageSize }' } },
       },
     },
   },

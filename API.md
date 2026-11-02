@@ -102,5 +102,17 @@
 
 ---
 
+## 十、商品评价 Review `/api/reviews`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | /reviews | 公开 | 商品评价列表，`productId` 必填，支持 `page` / `pageSize`(≤50)；响应附带 `stats: { total, averageRating }`（平均评分保留 1 位小数） |
+| POST | /reviews | Bearer | 提交评价，body `{ "productId": int, "rating": int(1-5), "content"?: string(≤500) }`；商品不存在返回 404 |
+| GET | /reviews/me | Bearer | 我的评价列表，支持分页 |
+
+> 评价人用户名采用「创建时快照 `reviewerName`」，前端展示时建议脱敏（如 `u_12***67`）。
+
+---
+
 ### 说明
 - 上方所有端点已与 `GET /api/docs`（OpenAPI）逐条对齐，两份文档保持一致。

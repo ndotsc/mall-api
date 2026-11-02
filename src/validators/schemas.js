@@ -98,3 +98,10 @@ export const addressSchema = z.object({
   isDefault: z.boolean().optional().default(false),
 })
 export const addressUpdateSchema = addressSchema.partial()
+
+// 商品评价：rating 必填 1-5；content 可选（最长 500）
+export const reviewCreateSchema = z.object({
+  productId: z.coerce.number().int().positive({ message: '商品 ID 无效' }),
+  rating: z.coerce.number().int().min(1).max(5, { message: '评分需在 1-5 之间' }),
+  content: z.string().max(500, { message: '评价内容过长（≤500 字）' }).optional(),
+})

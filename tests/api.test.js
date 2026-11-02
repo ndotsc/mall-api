@@ -8,7 +8,7 @@ const BASE = '/api'
 const rand = () => Math.floor(Math.random() * 1e9)
 let adminToken = ''
 let productId = null
-const created = { users: [], products: [], orders: [] }
+const created = { users: [], products: [], orders: [], reviews: [] }
 
 beforeAll(async () => {
   await prisma.$connect()
@@ -29,6 +29,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (created.orders.length) await prisma.order.deleteMany({ where: { orderNo: { in: created.orders } } })
   if (created.products.length) await prisma.product.deleteMany({ where: { id: { in: created.products } } })
+  if (created.reviews.length) await prisma.review.deleteMany({ where: { id: { in: created.reviews } } })
   if (created.users.length) {
     await prisma.refreshToken.deleteMany({ where: { userId: { in: created.users } } })
     await prisma.user.deleteMany({ where: { id: { in: created.users } } })
@@ -198,5 +199,46 @@ describe('orders', () => {
     const order = await prisma.order.findUnique({ where: { orderNo: res.body.data.orderNo } })
     expect(order.userId).toBe(r.body.data.user.id)
     expect(order.totalAmount).toBe(9900 * 2) // 服务端按库内价重算，不信任前端
+  })
+})
+
+describe('reviews', () => {
+  it('未登录提交评价 -> 401', async () => {
+    const res = await request(app)
+      .post(`${BASE}/reviews`)
+      .send({ productId, rating: 5, content: '好' })
+    expect(res.status).toBe(401)
+  })
+
+  it('缺 rating -> 400 (zod)', async () => {
+    const res = await request(app)
+      .post(`${BASE}/reviews`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ productId, content: '好' })
+    expect(res.status).toBe(400)
+  })
+
+  it('提交有效评价 -> 200，列表公开可见且统计正确', async () => {
+    const create = await request(app)
+      .post(`${BASE}/reviews`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ productId, rating: 5, content: '质量不错' })
+    expect(create.status).toBe(200)
+    expect(typeof create.body.data.id).toBe('number')
+    created.reviews.push(create.body.data.id)
+
+    const list = await request(app).get(`${BASE}/reviews?productId=${productId}`)
+    expect(list.status).toBe(200)
+    expect(list.body.data.total).toBeGreaterThanOrEqual(1)
+    expect(list.body.data.stats.averageRating).toBe(5)
+    expect(Array.isArray(list.body.data.list)).toBe(true)
+  })
+
+  it('我的评价 -> 200（含刚提交的那条）', async () => {
+    const me = await request(app)
+      .get(`${BASE}/reviews/me`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(me.status).toBe(200)
+    expect(me.body.data.list.some((r) => r.productId === productId)).toBe(true)
   })
 })

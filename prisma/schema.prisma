@@ -125,3 +125,19 @@ model RefreshToken {
   @@index([userId])
   @@index([familyId])
 }
+
+// 商品评价：用户购买/浏览后对商品的评分与文字评价。
+// 用户名采用「创建时快照 reviewerName」，避免查询时 join User（User 含敏感字段，且本项目用标量关联）。
+// 不纳入软删除集合（prisma.js 的 SOFT_DELETE_MODELS 仅 User/Product），评价可独立物理管理。
+model Review {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  reviewerName String                         // 评价人用户名快照（展示用，前端可脱敏）
+  productId    Int
+  rating       Int                            // 评分 1-5
+  content      String?                        // 文字评价，可选
+  createdAt    DateTime @default(now())
+
+  @@index([productId])
+  @@index([userId])
+}
