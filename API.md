@@ -69,7 +69,7 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | /orders | 我的订单列表（管理员可查全部），支持 `status` 过滤与分页 |
-| POST | /orders | 下单，body `{ "items":[{"productId":int,"number":int}], "info":{"name","phone","address"}, "payType":"wechat", "remark"? }`；**服务端按库内价重算金额**，不信任前端传价 |
+| POST | /orders | 下单，body `{ "items":[{"productId":int,"number":int}], "info":{"name","phone","address"}, "payType":"wechat", "remark"?, "couponId"?: int }`；**服务端按库内价重算金额**，不信任前端传价；传入 `couponId`（来自「我的优惠券」未使用列表）时服务端校验归属/未用/未过期/门槛并扣减优惠，返回 `{ orderNo, totalAmount(实付), discountAmount }` |
 | GET | /orders/{orderNo} | 订单详情（含 items） |
 | PATCH | /orders/{orderNo}/status | 改状态，body `{ "status": int }`；状态枚举：**1 待付款 / 2 待发货 / 3 待收货 / 4 待评价 / 5 已完成**（演示用，未做流转校验） |
 
@@ -111,6 +111,39 @@
 | GET | /reviews/me | Bearer | 我的评价列表，支持分页 |
 
 > 评价人用户名采用「创建时快照 `reviewerName`」，前端展示时建议脱敏（如 `u_12***67`）。
+
+---
+
+## 十一、收藏 Favorite `/api/favorites`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | /favorites | Bearer | 我的收藏列表，支持 `page` / `pageSize`(≤50)；响应 `{ list, total, page, pageSize }`，`list` 内含 `product` 快照（id/name/price/cover，单位分）；商品被软删时 `product` 为 `null` |
+| POST | /favorites | Bearer | 收藏商品，body `{ "productId": int }`；幂等（已收藏返回已有记录）；商品不存在返回 404 |
+| GET | /favorites/check | Bearer | 是否收藏某商品，query `productId` 必填；响应 `{ favorited: boolean }`（详情页心形初始态） |
+| DELETE | /favorites/{productId} | Bearer | 取消收藏，幂等（未收藏也返回 `{ productId, removed }`） |
+
+> 同一用户对同一商品有复合唯一约束，不会重复收藏。收藏记录独立于商品生命周期，商品下架不影响收藏关系（列表里 `product` 为 `null` 时前端按「已下架」展示）。
+
+---
+
+## 十二、优惠券 Coupon `/api/coupons`
+
+> 券分两类对象：**模板 `Coupon`**（一批券的规则与发放量，管理员创建）和**用户券 `UserCoupon`**（用户领取后归属自己）。金额单位均为**分**。
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | /coupons | Bearer | 领券中心：返回领取时间窗内的券列表 `{ list: (Coupon & { label, remaining, claimed })[] }`；`remaining=-1` 表示不限量，`claimed` 表示当前用户是否已领 |
+| POST | /coupons | 管理员 | 创建券模板，body `{ "name", "type", "value", "validFrom", "validTo", "threshold"?:int, "maxDiscount"?:int, "total"?:int(-1不限量), "perUserLimit"?:int }` |
+| POST | /coupons/{id}/claim | Bearer | 领取优惠券；校验领取时间窗 / 每人限领 `perUserLimit` / 总量 `total`；幂等（限领内已领未用的返回已有记录） |
+| GET | /coupons/mine | Bearer | 我的优惠券，`status` 过滤：`unused`(默认) / `used` / `expired` / `all`；`expired` 由模板 `validTo` 与当前时间比较得出（DB 不单独存过期态） |
+
+**券类型 `type` 与 `value` 含义：**
+- `full_reduction` 满减：`threshold`（门槛，分）必须满足 `subtotal >= threshold` 才减 `value`（分），否则券不可用。
+- `instant` 立减：无门槛直接减 `value`（分）。
+- `discount` 折扣：`value` 为「折扣率×100」，如 `90` 表示 9 折，优惠额 `= floor(subtotal × (100 - value) / 100)`，可用 `maxDiscount`（分）封顶。
+
+> 下单时把用户券 `id` 作为 `couponId` 传给 `POST /orders`，服务端统一计算并落库 `discountAmount` / `userCouponId`，同时把该用户券标记为 `used`（事务保证一致，避免重复用或订单失败但券已扣）。
 
 ---
 

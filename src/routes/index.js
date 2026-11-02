@@ -9,6 +9,8 @@ import categoryRoutes from './category.js'
 import cartRoutes from './cart.js'
 import addressRoutes from './address.js'
 import reviewRoutes from './review.js'
+import favoriteRoutes from './favorite.js'
+import couponRoutes from './coupon.js'
 import docsRoutes from './docs.js'
 
 const router = Router()
@@ -28,6 +30,8 @@ router.use('/categories', categoryRoutes)
 router.use('/cart', cartRoutes)
 router.use('/addresses', addressRoutes)
 router.use('/reviews', reviewRoutes)
+router.use('/favorites', favoriteRoutes)
+router.use('/coupons', couponRoutes)
 router.use('/docs', docsRoutes) // 接口文档：/api/docs 与 /api/docs/openapi.json
 
 export default router

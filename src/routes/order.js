@@ -5,12 +5,13 @@ import { authRequired } from '../middleware/auth.js'
 import { AppError } from '../utils/AppError.js'
 import { validateBody } from '../middleware/validate.js'
 import { orderCreateSchema, orderStatusSchema } from '../validators/schemas.js'
+import { computeCouponDiscount } from '../utils/coupon.js'
 
 const router = Router()
 
 router.post('/', authRequired, validateBody(orderCreateSchema), async (req, res) => {
   const userId = req.user.userId
-  const { items, info, payType, remark } = req.body || {}
+  const { items, info, payType, remark, couponId } = req.body || {}
 
   const productIds = items.map(i => Number(i.productId))
   const products = await prisma.product.findMany({ where: { id: { in: productIds } } })
@@ -29,20 +30,53 @@ router.post('/', authRequired, validateBody(orderCreateSchema), async (req, res)
     orderItems.push({ productId: pid, name: p.name, price: p.price, cover: p.cover, number })
   }
 
+  // 优惠券校验：归属本人、未使用、未过期、门槛满足。校验失败直接抛错，不创建订单。
+  let discountAmount = 0
+  let userCouponId = null
+  if (couponId != null) {
+    const uc = await prisma.userCoupon.findUnique({
+      where: { id: couponId },
+      include: { coupon: true },
+    })
+    if (!uc || uc.userId !== userId) throw new AppError('优惠券不存在', 404, 404)
+    if (uc.status !== 'unused') throw new AppError('优惠券已使用', 400, 400)
+    if (uc.coupon.validTo < new Date()) throw new AppError('优惠券已过期', 400, 400)
+    const { discount } = computeCouponDiscount(uc.coupon, totalAmount)
+    if (discount <= 0) throw new AppError('优惠券不满足使用条件（如未满门槛）', 400, 400)
+    discountAmount = discount
+    userCouponId = uc.id
+  }
+
+  const payable = totalAmount - discountAmount
   const orderNo = 'NO' + Date.now() + Math.floor(Math.random() * 1000)
-  const order = await prisma.order.create({
-    data: {
+
+  // 事务：创建订单 + 标记券已用，保证一致性（避免券被重复用或订单创建失败但券已扣）
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
+      data: {
         userId,
-        orderNo, totalAmount,
+        orderNo,
+        totalAmount: payable, // 实付（已减优惠）
+        discountAmount,
+        userCouponId,
         payType: payType || 'wechat',
         status: 1,
         receiverName: info.name, receiverPhone: info.phone, address: info.address,
         remark: remark || null,
         items: { create: orderItems },
-    },
-    include: { items: true },
+      },
+      include: { items: true },
+    })
+    if (userCouponId != null) {
+      await tx.userCoupon.update({
+        where: { id: userCouponId },
+        data: { status: 'used', usedAt: new Date(), orderId: created.id },
+      })
+    }
+    return created
   })
-  ok(res, { orderNo: order.orderNo })
+
+  ok(res, { orderNo: order.orderNo, totalAmount: payable, discountAmount })
 })
 
 // 订单列表：普通用户只看自己的；管理员看全部。支持按 status 过滤 + 分页

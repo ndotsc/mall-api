@@ -20,6 +20,7 @@ model Product {
   desc      String?
   categoryId Int?
   category Category? @relation(fields: [categoryId], references: [id])
+  favorites Favorite[] // 反向关系：商品可被多人收藏
   deletedAt DateTime? // 软删除标记：非 null 表示已删除（查询自动过滤）
   createdAt DateTime @default(now())
 
@@ -41,13 +42,15 @@ model Order {
   id  Int  @id @default(autoincrement())
   userId   Int?
   orderNo  String @unique
-  totalAmount Int // 单位： 分
+  totalAmount Int // 单位： 分（优惠后的实付金额）
   payType  String @default("wechat")
   status  Int @default(1) // 1=待发货 2=已发货 3=已完成
   receiverName String
   receiverPhone String
   address String
   remark String?
+  discountAmount Int @default(0) // 优惠金额（分），默认 0
+  userCouponId   Int?            // 使用的用户券 id（未用券为 null）
   createdAt DateTime @default(now())
   items  OrderItem[]
 }
@@ -140,4 +143,61 @@ model Review {
 
   @@index([productId])
   @@index([userId])
+}
+
+// 收藏/心愿单：用户对商品的收藏关系。
+// 复合唯一约束 [userId, productId] 防止同一用户重复收藏同一商品；
+// 不纳入软删除集合（prisma.js 的 SOFT_DELETE_MODELS 仅 User/Product），收藏记录独立物理管理。
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade) // 关联商品，支持 include 快照
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+}
+
+// 优惠券模板（批次）：定义一种券的规则与发放量。
+// type: full_reduction 满减 | discount 折扣 | instant 立减
+//   - 满减：subtotal >= threshold 才可减 value（分）
+//   - 折扣：value=折扣率*100（如 90 表示 9 折），maxDiscount 可选封顶（分）
+//   - 立减：无门槛直接减 value（分）
+// total: 发行总量，-1 表示不限量；perUserLimit: 每人限领张数。
+model Coupon {
+  id           Int      @id @default(autoincrement())
+  name         String
+  type         String   // 'full_reduction' | 'discount' | 'instant'
+  threshold    Int      @default(0)  // 使用门槛（分）；满减必填，立减/折扣可 0=无门槛
+  value        Int      // 满减/立减：减免额(分)；折扣：折扣率*100（90=9折）
+  maxDiscount  Int?     // 折扣封顶(分)，仅折扣类型
+  validFrom    DateTime
+  validTo      DateTime
+  total        Int      @default(-1) // 发行总量；-1 表示不限量
+  perUserLimit Int      @default(1)  // 每人限领
+  createdAt    DateTime @default(now())
+
+  userCoupons  UserCoupon[] // 反向关系：一种券可被多人领取
+
+  @@index([validFrom])
+  @@index([validTo])
+}
+
+// 用户优惠券（领取后归属用户）。
+// status: unused 未使用 | used 已使用；已过期不在 DB 存（领取时 validTo 内，展示时按模板 validTo 计算「已过期」）。
+// orderId: 使用后记录的订单 id，便于回溯。
+model UserCoupon {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  couponId  Int
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade) // 关联券模板，支持 include
+  status    String   @default("unused") // 'unused' | 'used'
+  orderId   Int?
+  claimedAt DateTime @default(now())
+  usedAt    DateTime?
+
+  @@index([userId, status])
+  @@index([couponId])
 }

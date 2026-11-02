@@ -90,6 +90,55 @@ const spec = {
           averageRating: { type: 'number', example: 4.5, description: '平均评分（保留 1 位小数）' },
         },
       },
+      Favorite: {
+        type: 'object',
+        description: '收藏记录',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          userId: { type: 'integer', example: 1 },
+          productId: { type: 'integer', example: 1 },
+          createdAt: { type: 'string', format: 'date-time' },
+          product: {
+            type: 'object',
+            nullable: true,
+            description: '商品快照（id/name/price/cover）；商品被软删时为 null',
+            properties: {
+              id: { type: 'integer', example: 1 },
+              name: { type: 'string', example: '商品名称' },
+              price: { type: 'integer', example: 9900, description: '单位：分' },
+              cover: { type: 'string', nullable: true, example: '/uploads/xxx.jpg' },
+            },
+          },
+        },
+      },
+      Coupon: {
+        type: 'object',
+        description: '优惠券模板（批次）',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          name: { type: 'string', example: '新人满减券' },
+          type: { type: 'string', enum: ['full_reduction', 'discount', 'instant'], description: '满减 / 折扣 / 立减' },
+          threshold: { type: 'integer', example: 10000, description: '使用门槛（分）；满减必填，立减/折扣可 0' },
+          value: { type: 'integer', example: 2000, description: '满减/立减：减免额(分)；折扣：折扣率*100（90=9折）' },
+          maxDiscount: { type: 'integer', nullable: true, example: 5000, description: '折扣封顶(分)，仅折扣类型' },
+          validFrom: { type: 'string', format: 'date-time' },
+          validTo: { type: 'string', format: 'date-time' },
+          total: { type: 'integer', example: -1, description: '发行总量；-1 表示不限量' },
+          perUserLimit: { type: 'integer', example: 1, description: '每人限领张数' },
+        },
+      },
+      UserCoupon: {
+        type: 'object',
+        description: '用户优惠券（领取后归属用户）',
+        properties: {
+          id: { type: 'integer', example: 1 },
+          status: { type: 'string', enum: ['unused', 'used', 'expired'], description: '未使用 / 已使用 / 已过期（过期按模板 validTo 计算）' },
+          claimedAt: { type: 'string', format: 'date-time' },
+          usedAt: { type: 'string', format: 'date-time', nullable: true },
+          orderId: { type: 'integer', nullable: true, description: '使用后记录的订单 id' },
+          coupon: { $ref: '#/components/schemas/Coupon' },
+        },
+      },
     },
   },
   security: [{ bearerAuth: [] }],
@@ -282,6 +331,7 @@ const spec = {
                   info: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, address: { type: 'string' } } },
                   payType: { type: 'string', description: '默认 wechat' },
                   remark: { type: 'string' },
+                  couponId: { type: 'integer', description: '可选：使用的用户券 id（来自 /api/coupons/mine），服务端校验并扣减优惠' },
                 },
               },
             },
@@ -517,6 +567,144 @@ const spec = {
           { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
         ],
         responses: { '200': { description: 'data 为 { list: Review[], total, page, pageSize }' } },
+      },
+    },
+    '/favorites': {
+      get: {
+        summary: '我的收藏列表（需登录，带商品快照，支持分页）',
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer' } },
+          { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
+        ],
+        responses: {
+          '200': {
+            description: 'data 为 { list: Favorite[], total, page, pageSize }（list 内含 product 快照，已下架商品 product 为 null）',
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/ApiResponse' },
+                    {
+                      type: 'object',
+                      properties: {
+                        data: {
+                          type: 'object',
+                          properties: {
+                            list: { type: 'array', items: { $ref: '#/components/schemas/Favorite' } },
+                            total: { type: 'integer' },
+                            page: { type: 'integer' },
+                            pageSize: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          '401': { description: '未登录' },
+        },
+      },
+      post: {
+        summary: '收藏商品（需登录，幂等：已收藏返回已有记录）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['productId'],
+                properties: { productId: { type: 'integer', description: '商品 ID' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'data 为 Favorite' },
+          '400': { description: 'productId 无效' },
+          '401': { description: '未登录' },
+          '404': { description: '商品不存在' },
+        },
+      },
+    },
+    '/favorites/check': {
+      get: {
+        summary: '是否收藏某商品（需登录，详情页心形初始态）',
+        parameters: [
+          { name: 'productId', in: 'query', required: true, schema: { type: 'integer' }, description: '商品 ID' },
+        ],
+        responses: {
+          '200': { description: 'data 为 { favorited: boolean }' },
+          '400': { description: 'productId 无效' },
+          '401': { description: '未登录' },
+        },
+      },
+    },
+    '/favorites/{productId}': {
+      delete: {
+        summary: '取消收藏（需登录，幂等：未收藏也返回成功）',
+        parameters: [{ name: 'productId', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { '200': { description: '{ productId, removed }' }, '400': { description: 'productId 无效' }, '401': { description: '未登录' } },
+      },
+    },
+    '/coupons': {
+      get: {
+        summary: '领券中心（需登录）：在领取时间窗内的券，含是否已领/剩余量',
+        responses: {
+          '200': { description: 'data 为 { list: (Coupon & { label, remaining, claimed })[] }' },
+          '401': { description: '未登录' },
+        },
+      },
+      post: {
+        summary: '管理员创建优惠券模板',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'type', 'value', 'validFrom', 'validTo'],
+                properties: {
+                  name: { type: 'string' },
+                  type: { type: 'string', enum: ['full_reduction', 'discount', 'instant'] },
+                  threshold: { type: 'integer', description: '分，默认 0' },
+                  value: { type: 'integer', description: '满减/立减：分；折扣：折扣率*100（90=9折）' },
+                  maxDiscount: { type: 'integer', description: '分，仅折扣类型可选' },
+                  validFrom: { type: 'string', format: 'date-time' },
+                  validTo: { type: 'string', format: 'date-time' },
+                  total: { type: 'integer', description: '发行总量，-1 不限量，默认 -1' },
+                  perUserLimit: { type: 'integer', description: '每人限领，默认 1' },
+                },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: 'data 为 Coupon' }, '403': { description: '无权限' }, '400': { description: '参数错误' } },
+      },
+    },
+    '/coupons/{id}/claim': {
+      post: {
+        summary: '领取优惠券（需登录）',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          '200': { description: 'data 为 UserCoupon' },
+          '400': { description: '已抢光 / 已达领取上限 / 不在领取时间' },
+          '401': { description: '未登录' },
+          '404': { description: '优惠券不存在' },
+        },
+      },
+    },
+    '/coupons/mine': {
+      get: {
+        summary: '我的优惠券（需登录，按状态过滤）',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['unused', 'used', 'expired', 'all'] }, description: '默认 unused' },
+        ],
+        responses: {
+          '200': { description: 'data 为 { list: UserCoupon[], total }（已过期按模板 validTo 计算）' },
+          '401': { description: '未登录' },
+        },
       },
     },
   },

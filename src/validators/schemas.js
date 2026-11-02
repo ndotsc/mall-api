@@ -37,6 +37,7 @@ export const orderCreateSchema = z.object({
   }),
   payType: z.string().optional(),
   remark: z.string().optional(),
+  couponId: z.coerce.number().int().positive({ message: '优惠券 ID 无效' }).optional(),
 })
 
 // 订单状态变更：1待付款 2待发货 3待收货 4已完成 5已取消
@@ -105,3 +106,31 @@ export const reviewCreateSchema = z.object({
   rating: z.coerce.number().int().min(1).max(5, { message: '评分需在 1-5 之间' }),
   content: z.string().max(500, { message: '评价内容过长（≤500 字）' }).optional(),
 })
+
+// 收藏：productId 用 coerce，兼容前端可能传来的字符串
+export const favoriteCreateSchema = z.object({
+  productId: z.coerce.number().int().positive({ message: '商品 ID 无效' }),
+})
+
+// 优惠券模板（管理员建券）：金额单位均为分；折扣券 value 为折扣率*100（90=9折）
+export const couponCreateSchema = z
+  .object({
+    name: z.string().min(1, { message: '券名称必填' }),
+    type: z.enum(['full_reduction', 'discount', 'instant'], { message: '券类型无效' }),
+    threshold: z.coerce.number().int({ message: '门槛需为整数（分）' }).nonnegative({ message: '门槛不能为负' }).default(0),
+    value: z.coerce.number().int({ message: '优惠值需为整数' }).positive({ message: '优惠值必须为正整数' }),
+    maxDiscount: z.coerce.number().int().positive({ message: '折扣封顶须为正整数（分）' }).optional(),
+    validFrom: z.coerce.date({ message: '开始时间无效' }),
+    validTo: z.coerce.date({ message: '结束时间无效' }),
+    total: z.coerce.number().int().default(-1), // -1 不限量
+    perUserLimit: z.coerce.number().int().positive({ message: '每人限领须为正整数' }).default(1),
+  })
+  .refine((d) => d.validTo > d.validFrom, { message: '结束时间须晚于开始时间', path: ['validTo'] })
+  .refine((d) => d.type !== 'full_reduction' || d.threshold > 0, {
+    message: '满减券门槛须大于 0',
+    path: ['threshold'],
+  })
+  .refine((d) => d.type !== 'discount' || (d.value > 0 && d.value < 100), {
+    message: '折扣券 value 需为 1-99（表示 0.01-0.99 折）',
+    path: ['value'],
+  })

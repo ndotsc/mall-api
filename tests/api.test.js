@@ -8,7 +8,7 @@ const BASE = '/api'
 const rand = () => Math.floor(Math.random() * 1e9)
 let adminToken = ''
 let productId = null
-const created = { users: [], products: [], orders: [], reviews: [] }
+const created = { users: [], products: [], orders: [], reviews: [], favorites: [], coupons: [], userCoupons: [] }
 
 beforeAll(async () => {
   await prisma.$connect()
@@ -28,10 +28,15 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (created.orders.length) await prisma.order.deleteMany({ where: { orderNo: { in: created.orders } } })
-  if (created.products.length) await prisma.product.deleteMany({ where: { id: { in: created.products } } })
+  if (created.userCoupons.length) await prisma.userCoupon.deleteMany({ where: { id: { in: created.userCoupons } } })
+  if (created.coupons.length) await prisma.coupon.deleteMany({ where: { id: { in: created.coupons } } })
+  // 先清收藏/评价再删商品，避免外键约束（商品被引用）报错
+  if (created.favorites.length) await prisma.favorite.deleteMany({ where: { id: { in: created.favorites } } })
   if (created.reviews.length) await prisma.review.deleteMany({ where: { id: { in: created.reviews } } })
+  if (created.products.length) await prisma.product.deleteMany({ where: { id: { in: created.products } } })
   if (created.users.length) {
     await prisma.refreshToken.deleteMany({ where: { userId: { in: created.users } } })
+    await prisma.favorite.deleteMany({ where: { userId: { in: created.users } } })
     await prisma.user.deleteMany({ where: { id: { in: created.users } } })
   }
   await prisma.$disconnect()
@@ -286,5 +291,187 @@ describe('reviews', () => {
       .set('Authorization', `Bearer ${adminToken}`)
     expect(me.status).toBe(200)
     expect(me.body.data.list.some((r) => r.productId === productId)).toBe(true)
+  })
+})
+
+describe('favorites', () => {
+  // 自建商品夹具，避免依赖模块级 productId 跨 describe 共享状态（在测试隔离下不可靠）
+  let favProductId = null
+
+  beforeAll(async () => {
+    const p = await prisma.product.create({ data: { name: 'fav_p_' + rand(), price: 1999 } })
+    favProductId = p.id
+    created.products.push(favProductId)
+  })
+
+  it('未登录收藏 -> 401', async () => {
+    const res = await request(app)
+      .post(`${BASE}/favorites`)
+      .send({ productId: favProductId })
+    expect(res.status).toBe(401)
+  })
+
+  it('收藏商品 -> 200，且幂等（重复收藏不报错）', async () => {
+    const fav = await request(app)
+      .post(`${BASE}/favorites`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ productId: favProductId })
+    expect(fav.status).toBe(200)
+    expect(typeof fav.body.data.id).toBe('number')
+    created.favorites.push(fav.body.data.id)
+
+    const again = await request(app)
+      .post(`${BASE}/favorites`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ productId: favProductId })
+    expect(again.status).toBe(200)
+  })
+
+  it('check -> favorited=true', async () => {
+    const res = await request(app)
+      .get(`${BASE}/favorites/check?productId=${favProductId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.favorited).toBe(true)
+  })
+
+  it('我的收藏列表 -> 200，含商品快照', async () => {
+    const res = await request(app)
+      .get(`${BASE}/favorites`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.total).toBeGreaterThanOrEqual(1)
+    const item = res.body.data.list.find((f) => f.productId === favProductId)
+    expect(item).toBeTruthy()
+    expect(item.product).toBeTruthy() // 商品未被软删，快照非空
+  })
+
+  it('取消收藏 -> 200(removed=true)，check 变为 false', async () => {
+    const del = await request(app)
+      .delete(`${BASE}/favorites/${favProductId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(del.status).toBe(200)
+    expect(del.body.data.removed).toBe(true)
+
+    const check = await request(app)
+      .get(`${BASE}/favorites/check?productId=${favProductId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(check.body.data.favorited).toBe(false)
+  })
+})
+
+describe('coupons', () => {
+  let couponId = null
+  let userCouponId = null
+  let couponProductId = null
+
+  beforeAll(async () => {
+    // 自建券模板（满减：满 100 减 20，限时 10 天，不限量）与下单商品夹具
+    const now = new Date()
+    const to = new Date(now.getTime() + 10 * 24 * 3600 * 1000)
+    const c = await request(app)
+      .post(`${BASE}/coupons`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: '测试满减券',
+        type: 'full_reduction',
+        threshold: 10000,
+        value: 2000,
+        validFrom: now.toISOString(),
+        validTo: to.toISOString(),
+        total: -1,
+        perUserLimit: 1,
+      })
+    expect(c.status).toBe(200)
+    couponId = c.body.data.id
+    created.coupons.push(couponId)
+
+    const p = await prisma.product.create({ data: { name: 'coupon_p_' + rand(), price: 15000 } })
+    couponProductId = p.id
+    created.products.push(couponProductId)
+  })
+
+  it('非管理员建券 -> 403（普通用户无权限，这里用无 token 验证鉴权层）', async () => {
+    const res = await request(app)
+      .post(`${BASE}/coupons`)
+      .send({ name: 'x', type: 'instant', value: 100, validFrom: new Date().toISOString(), validTo: new Date().toISOString() })
+    expect(res.status).toBe(401)
+  })
+
+  it('领取优惠券 -> 200，返回 UserCoupon', async () => {
+    const res = await request(app)
+      .post(`${BASE}/coupons/${couponId}/claim`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.id).toBeTruthy()
+    userCouponId = res.body.data.id
+    created.userCoupons.push(userCouponId)
+  })
+
+  it('领券中心 -> 200，该券 claimed=true, remaining=-1', async () => {
+    const res = await request(app)
+      .get(`${BASE}/coupons`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    const item = res.body.data.list.find((x) => x.id === couponId)
+    expect(item).toBeTruthy()
+    expect(item.claimed).toBe(true)
+    expect(item.remaining).toBe(-1)
+  })
+
+  it('我的优惠券 unused -> 200，含该券', async () => {
+    const res = await request(app)
+      .get(`${BASE}/coupons/mine?status=unused`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    const item = res.body.data.list.find((x) => x.id === userCouponId)
+    expect(item).toBeTruthy()
+    expect(item.status).toBe('unused')
+    expect(item.coupon.label).toContain('减')
+  })
+
+  it('下单使用优惠券 -> 200，totalAmount=小计-优惠', async () => {
+    const res = await request(app)
+      .post(`${BASE}/orders`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        items: [{ productId: couponProductId, number: 1 }], // 小计 15000（¥150）
+        info: { name: '测试', phone: '13800000000', address: '测试地址' },
+        couponId: userCouponId,
+      })
+    expect(res.status).toBe(200)
+    // 满 100 减 20：15000 - 2000 = 13000
+    expect(res.body.data.totalAmount).toBe(13000)
+    expect(res.body.data.discountAmount).toBe(2000)
+    created.orders.push(res.body.data.orderNo)
+  })
+
+  it('券已使用 -> 我的优惠券 used', async () => {
+    const res = await request(app)
+      .get(`${BASE}/coupons/mine?status=used`)
+      .set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    const item = res.body.data.list.find((x) => x.id === userCouponId)
+    expect(item).toBeTruthy()
+    expect(item.status).toBe('used')
+  })
+
+  it('重复领取 -> 仍 200（幂等，返回已领未用的那张）', async () => {
+    // 再建一张可重复领的券验证幂等
+    const now = new Date()
+    const to = new Date(now.getTime() + 10 * 24 * 3600 * 1000)
+    const c = await request(app)
+      .post(`${BASE}/coupons`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: '可重复领', type: 'instant', value: 500, validFrom: now.toISOString(), validTo: to.toISOString(), perUserLimit: 2 })
+    const cid = c.body.data.id
+    created.coupons.push(cid)
+    const a = await request(app).post(`${BASE}/coupons/${cid}/claim`).set('Authorization', `Bearer ${adminToken}`)
+    created.userCoupons.push(a.body.data.id)
+    const b = await request(app).post(`${BASE}/coupons/${cid}/claim`).set('Authorization', `Bearer ${adminToken}`)
+    created.userCoupons.push(b.body.data.id)
+    expect(a.status).toBe(200)
+    expect(b.status).toBe(200)
+    expect(a.body.data.id).toBe(b.body.data.id) // 未用状态下幂等返回同一张
   })
 })
