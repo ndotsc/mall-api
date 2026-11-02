@@ -65,6 +65,11 @@ export const wxOauthSchema = z.object({
   code: z.string().min(1, { message: '微信授权 code 必填' }),
 })
 
+// 刷新令牌：用长期 refresh token 换新的访问令牌
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(1, { message: 'refresh token 不能为空' }),
+})
+
 // 购物车：productId/number 用 coerce，兼容前端可能传来的字符串
 export const cartAddSchema = z.object({
   productId: z.coerce.number().int().positive({ message: '商品 ID 无效' }),

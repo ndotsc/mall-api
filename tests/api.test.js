@@ -29,7 +29,10 @@ beforeAll(async () => {
 afterAll(async () => {
   if (created.orders.length) await prisma.order.deleteMany({ where: { orderNo: { in: created.orders } } })
   if (created.products.length) await prisma.product.deleteMany({ where: { id: { in: created.products } } })
-  if (created.users.length) await prisma.user.deleteMany({ where: { id: { in: created.users } } })
+  if (created.users.length) {
+    await prisma.refreshToken.deleteMany({ where: { userId: { in: created.users } } })
+    await prisma.user.deleteMany({ where: { id: { in: created.users } } })
+  }
   await prisma.$disconnect()
 })
 
@@ -81,6 +84,38 @@ describe('auth', () => {
       .set('Authorization', `Bearer ${adminToken}`)
     expect(res.status).toBe(200)
     expect(res.body.data.username).toBe('__test_admin__')
+  })
+})
+
+describe('auth refresh', () => {
+  it('注册返回 refreshToken，且刷新后新 access 可访问 /me', async () => {
+    const u = 'rf_' + rand()
+    const r = await request(app).post(`${BASE}/auth/register`).send({ username: u, password: 'secret1' })
+    created.users.push(r.body.data.user.id)
+    expect(typeof r.body.data.refreshToken).toBe('string')
+    const refresh = await request(app).post(`${BASE}/auth/refresh`).send({ refreshToken: r.body.data.refreshToken })
+    expect(refresh.status).toBe(200)
+    expect(typeof refresh.body.data.token).toBe('string')
+    const me = await request(app)
+      .get(`${BASE}/auth/me`)
+      .set('Authorization', `Bearer ${refresh.body.data.token}`)
+    expect(me.status).toBe(200)
+  })
+
+  it('refresh 轮换：旧 refresh 二次使用 -> 401（复用检测，整族吊销）', async () => {
+    const u = 'rf2_' + rand()
+    const r = await request(app).post(`${BASE}/auth/register`).send({ username: u, password: 'secret1' })
+    created.users.push(r.body.data.user.id)
+    const rt = r.body.data.refreshToken
+    const first = await request(app).post(`${BASE}/auth/refresh`).send({ refreshToken: rt })
+    expect(first.status).toBe(200)
+    const reuse = await request(app).post(`${BASE}/auth/refresh`).send({ refreshToken: rt })
+    expect(reuse.status).toBe(401)
+  })
+
+  it('refresh 缺参 -> 400 (zod)', async () => {
+    const res = await request(app).post(`${BASE}/auth/refresh`).send({})
+    expect(res.status).toBe(400)
   })
 })
 

@@ -154,7 +154,7 @@ password: admin123        # role = 2
 |---|---|---|
 | 高 | 全局限流 | ✅ 已做（进程内；配 `REDIS_URL` 自动改走 Redis） |
 | 高 | 请求体 / 上传大小与类型限制 | ✅ 已做（1mb 请求体、2MB 图片、类型白名单） |
-| 高 | JWT 注销黑名单 | ✅ 已做（`/api/auth/logout`；配 `REDIS_URL` 自动走 Redis 共享） |
+| 高 | JWT 注销黑名单 + 刷新令牌 | ✅ 已做（双令牌：access 默认 15m / refresh 默认 7d 入库；`/auth/refresh` 轮换 + 复用检测；`/auth/logout` 整族吊销；时长可调 `JWT_ACCESS_TTL_MIN`/`JWT_REFRESH_TTL_DAYS`） |
 | 中 | 数据库连接池调优 | ✅ 已落地（默认 `connection_limit=10`/`pool_timeout=5` 等，可按 `PRISMA_*` 变量与实例数调，见 `.env.example` 与 `src/prisma.js`） |
 | 中 | 监控 / APM | ✅ 可选：配 `SENTRY_DSN` + `@sentry/node` 自动上报 Sentry；默认无依赖 |
 | 中 | 自动化测试 + CI/CD | ✅ 已有 `tests/api.test.js` + `.github/workflows/ci.yml`（MySQL 服务容器 + vitest） |

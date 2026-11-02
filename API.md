@@ -20,9 +20,18 @@
 | POST | /auth/wx-login | 公开 | 微信登录（小程序 / App 微信），body `{ "code": "..." }` |
 | POST | /auth/wx-oauth | 公开 | 公众号网页授权登录（H5 微信内），body `{ "code": "..." }` |
 | GET | /auth/me | Bearer | 获取当前用户 |
-| POST | /auth/logout | Bearer | 注销，拉黑当前 token 的 `jti` 立即失效 |
+| POST | /auth/logout | Bearer | 注销：拉黑当前 access 的 `jti` 并吊销本次登录家族全部 refresh |
+| POST | /auth/refresh | 公开 | 用 refresh token 换新的 `token` + `refreshToken`（旧 refresh 立即作废，支持轮换与复用检测） |
 
 > 微信类接口需在 `.env` 配置 `WX_APPID`/`WX_SECRET`（公众号 `WX_OA_APPID`/`WX_OA_SECRET`，缺省回退小程序凭证）；未配置或 `code` 无效返回明确错误。
+
+### 令牌策略（access / refresh 双令牌）
+- 登录 / 注册 / 微信登录成功后，响应返回 **一对令牌**：`token`（访问令牌，默认 `15m` 短期）与 `refreshToken`（刷新令牌，默认 `7d` 长期）。
+- `token` 过期后**不要直接跳登录页**：前端用 `refreshToken` 调 `POST /auth/refresh` 静默换取新的 `token` + `refreshToken`（旧 `refreshToken` 立即作废，即「轮换」）。
+- 若同一个 `refreshToken` 被使用两次（疑似令牌泄露），接口返回 `401` 并把该登录家族全部 refresh 吊销，强制重新登录。
+- 注销 `POST /auth/logout` 会使**本次登录及其刷新链**全部失效（整族吊销），多端登录互不影响（每次登录是不同家族）。
+- 可通过环境变量调整时长：`JWT_ACCESS_TTL_MIN`（分钟，默认 15）、`JWT_REFRESH_TTL_DAYS`（天，默认 7）。
+- **安全提示**：当前 refresh token 由前端自行保存（与 access 同机制）。生产环境更优做法是把 refresh token 放进 `httpOnly` + `Secure` + `SameSite` Cookie，避免 XSS 窃取；本项目为多端（H5 / 小程序 / App）兼容起见暂用 JSON 返回。
 
 ## 三、商品 Product `/api/products`
 

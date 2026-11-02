@@ -109,3 +109,19 @@ model Address {
 
   @@index([userId])
 }
+
+// 刷新令牌：access token 短期（默认 15m），refresh token 长期（默认 7d）入库，
+// 支持「轮换」（旧 refresh 用一次即作废）与「整族吊销」（logout 让本次登录链全部失效）。
+// id 即 refresh token 的 jti，全局唯一；familyId 把一次登录及其后续刷新串成同一家族。
+model RefreshToken {
+  id         String   @id                   // 即 refresh token 的 jti
+  userId     Int
+  familyId   String                         // 登录家族：logout 时整族吊销
+  expiresAt  DateTime                       // 与 JWT exp 对齐
+  revoked    Boolean  @default(false)        // 是否已吊销（注销 / 轮换后旧令牌置 true）
+  replacedBy String?                        // 轮换后指向新 jti，用于检测 refresh token 复用
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}

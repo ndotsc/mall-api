@@ -1,10 +1,7 @@
-import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
-import crypto from 'crypto'
 import { AppError } from '../utils/AppError.js'
-import { blacklistHas } from '../utils/blacklist.js'
+import { verifyAccessToken } from '../utils/token.js'
 
-const SECRET = process.env.JWT_SECRET
 const SALT_ROUNDS = 10
 
 export async function hashPassword(plain) {
@@ -15,11 +12,6 @@ export async function comparePassword(plain, hash) {
     return bcrypt.compare(plain, hash)
 }
 
-// 签发 JWT：除业务字段外附上唯一 jti（用于注销时拉黑）与 exp（过期时间）
-export function signToken(payload) {
-    return jwt.sign({ jti: crypto.randomUUID(), ...payload }, SECRET, { expiresIn: '7d' })
-}
-
 export async function authRequired(req, res, next) {
     const header = req.headers.authorization || ''
     const token = header.startsWith('Bearer ') ? header.slice(7) : ''
@@ -27,16 +19,13 @@ export async function authRequired(req, res, next) {
         return next(new AppError('未登录或登录已过期', 401, 401))
     }
     try {
-        const payload = jwt.verify(token, SECRET)
-        // 注销后该 jti 会被拉黑，立即失效
-        if (await blacklistHas(payload.jti)) {
-            return next(new AppError('登录已失效，请重新登录', 401, 401))
-        }
-        // 把 jti / exp 透传给后续逻辑（logout 时要用 jti 拉黑）
-        req.user = { userId: payload.userId, role: payload.role, jti: payload.jti, exp: payload.exp }
+        // verifyAccessToken 同时校验签名 / 过期 / 黑名单（见 utils/token.js）
+        const payload = await verifyAccessToken(token)
+        // 把 jti / exp / familyId 透传给后续逻辑（logout 时要用 jti 拉黑、familyId 整族吊销）
+        req.user = { userId: payload.userId, role: payload.role, jti: payload.jti, exp: payload.exp, familyId: payload.familyId }
         next()
-    } catch {
-        return next(new AppError('token 无效', 401, 401))
+    } catch (e) {
+        next(e)
     }
 }
 

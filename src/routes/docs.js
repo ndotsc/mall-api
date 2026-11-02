@@ -93,7 +93,7 @@ const spec = {
             },
           },
         },
-        responses: { '200': { description: '返回 token + user' }, '400': { description: '参数错误' } },
+        responses: { '200': { description: '返回 token + refreshToken + user' }, '400': { description: '参数错误' } },
       },
     },
     '/auth/login': {
@@ -108,14 +108,35 @@ const spec = {
             },
           },
         },
-        responses: { '200': { description: '返回 token + user' }, '401': { description: '账号或密码错误' } },
+        responses: { '200': { description: '返回 token + refreshToken + user' }, '401': { description: '账号或密码错误' } },
       },
     },
     '/auth/me': {
       get: { summary: '获取当前用户信息', responses: { '200': { description: 'user' }, '401': { description: '未登录' } } },
     },
     '/auth/logout': {
-      post: { summary: '注销（拉黑当前 token）', responses: { '200': { description: '成功' } } },
+      post: {
+        summary: '注销（拉黑当前 access + 吊销本次登录家族全部 refresh）',
+        responses: { '200': { description: '成功；本次登录及其刷新链全部失效' } },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        summary: '用 refresh token 轮换新令牌对（access 过期后前端静默调用）',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', properties: { refreshToken: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {
+          '200': { description: '返回新的 token + refreshToken（旧 refresh 立即作废）' },
+          '401': { description: 'refresh 无效 / 过期 / 已被复用（需重新登录）' },
+        },
+      },
     },
     '/auth/wx-login': {
       post: {
@@ -125,7 +146,7 @@ const spec = {
           required: true,
           content: { 'application/json': { schema: { type: 'object', properties: { code: { type: 'string' } } } } },
         },
-        responses: { '200': { description: '返回 token + user' } },
+        responses: { '200': { description: '返回 token + refreshToken + user' } },
       },
     },
     '/auth/wx-oauth': {
@@ -136,7 +157,7 @@ const spec = {
           required: true,
           content: { 'application/json': { schema: { type: 'object', properties: { code: { type: 'string' } } } } },
         },
-        responses: { '200': { description: '返回 token + user' } },
+        responses: { '200': { description: '返回 token + refreshToken + user' } },
       },
     },
     '/products': {
