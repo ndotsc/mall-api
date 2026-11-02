@@ -17,7 +17,9 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
-    command: --default-authentication-plugin=mysql_native_password
+    # 服务端连接数调大（默认 151，容易被多实例 / 多客户端打满）；
+    # wait/interactive_timeout 避免空闲连接长期占用。改了 command 需 --force-recreate 才生效。
+    command: --default-authentication-plugin=mysql_native_password --max_connections=300 --wait_timeout=28800 --interactive_timeout=28800
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
       interval: 5s
@@ -33,6 +35,11 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: mysql://mall:mall123@mysql:3306/mall
+      # 连接池：单实例 10，单 backend 实例远小于 mysql 的 300；多实例时按需下调或上调 mysql
+      PRISMA_CONNECTION_LIMIT: "10"
+      PRISMA_POOL_TIMEOUT: "5"
+      PRISMA_CONNECT_TIMEOUT: "10"
+      PRISMA_SOCKET_TIMEOUT: "60"
       JWT_SECRET: dev-secret-change-me
       CORS_ORIGINS: http://localhost:5173
       PORT: 3000
