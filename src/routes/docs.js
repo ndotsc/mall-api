@@ -182,12 +182,29 @@ const spec = {
     },
     '/products': {
       get: {
-        summary: '商品列表（公开，支持分页 / 关键词）',
+        summary: '商品列表（公开，支持分页 / 关键词 / 分类 / 价格区间 / 排序）',
         security: [],
         parameters: [
-          { name: 'page', in: 'query', schema: { type: 'integer' } },
-          { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 } },
-          { name: 'keyword', in: 'query', schema: { type: 'string' } },
+          { name: 'page', in: 'query', schema: { type: 'integer' }, description: '页码，从 1 开始' },
+          { name: 'pageSize', in: 'query', schema: { type: 'integer', maximum: 50 }, description: '每页条数，上限 50' },
+          { name: 'keyword', in: 'query', schema: { type: 'string' }, description: '商品名称模糊匹配' },
+          {
+            name: 'categoryId', in: 'query', schema: { type: 'integer' },
+            description: '分类 ID，精确匹配；非法值忽略',
+          },
+          {
+            name: 'minPrice', in: 'query', schema: { type: 'integer' },
+            description: '价格下限（单位：分）；非法值忽略',
+          },
+          {
+            name: 'maxPrice', in: 'query', schema: { type: 'integer' },
+            description: '价格上限（单位：分）；非法值忽略',
+          },
+          {
+            name: 'sort', in: 'query',
+            schema: { type: 'string', enum: ['created_desc', 'created_asc', 'price_asc', 'price_desc'], default: 'created_desc' },
+            description: '排序方式：created_desc=默认（按创建时间倒序）/ created_asc / price_asc（价格升）/ price_desc（价格降）',
+          },
         ],
         responses: { '200': { description: '{ list, total, page, pageSize }' } },
       },

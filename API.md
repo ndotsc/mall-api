@@ -37,7 +37,7 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | /products | 公开 | 列表，支持 `page` / `pageSize`(≤50) / `keyword` 分页与搜索，默认按创建时间倒序 |
+| GET | /products | 公开 | 列表，支持分页 `page` / `pageSize`(≤50) 与搜索 `keyword`（名称模糊）；并可按 `categoryId`（分类精确）、`minPrice`/`maxPrice`（价格区间，单位**分**）筛选；`sort` 指定排序：`created_desc`(默认，按创建时间倒序) / `created_asc` / `price_asc`(价格升) / `price_desc`(价格降)。以上筛选参数均可单独或组合使用，非法值自动忽略 |
 | POST | /products | 管理员 | 新建商品 |
 | GET | /products/{id} | 公开 | 商品详情 |
 | PUT | /products/{id} | 管理员 | 更新商品 |

@@ -162,6 +162,52 @@ describe('products (需要管理员)', () => {
   })
 })
 
+describe('products 筛选 / 排序', () => {
+  // 自建 2 个分类 + 3 个商品，覆盖「分类 / 价格梯度 / 组合」，便于精确断言。
+  let catA, catB, p1, p2, p3
+
+  beforeAll(async () => {
+    catA = await prisma.category.create({ data: { name: 'flt_catA_' + rand(), sort: 0 } })
+    catB = await prisma.category.create({ data: { name: 'flt_catB_' + rand(), sort: 1 } })
+    p1 = await prisma.product.create({ data: { name: 'flt_a_cheap_' + rand(), price: 100, categoryId: catA.id } })
+    p2 = await prisma.product.create({ data: { name: 'flt_a_exp_' + rand(), price: 500, categoryId: catA.id } })
+    p3 = await prisma.product.create({ data: { name: 'flt_b_mid_' + rand(), price: 900, categoryId: catB.id } })
+    created.products.push(p1.id, p2.id, p3.id)
+  })
+
+  afterAll(async () => {
+    // 先删自建商品（避免外键约束），再删自建分类。
+    // 全局 afterAll 还会按 created.products 再删一次本用例商品（已不存在，deleteMany 无影响）。
+    await prisma.product.deleteMany({ where: { id: { in: [p1.id, p2.id, p3.id] } } })
+    await prisma.category.deleteMany({ where: { id: { in: [catA.id, catB.id] } } })
+  })
+
+  it('按 categoryId 筛选返回预期条数', async () => {
+    const res = await request(app).get(`${BASE}/products?keyword=flt_&categoryId=${catA.id}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.total).toBe(2)
+    expect(res.body.data.list.every((p) => p.categoryId === catA.id)).toBe(true)
+  })
+
+  it('按价格区间 minPrice / maxPrice 筛选', async () => {
+    const res = await request(app).get(`${BASE}/products?keyword=flt_&minPrice=100&maxPrice=500`)
+    expect(res.status).toBe(200)
+    // 仅 p1(100) 与 p2(500) 命中；p3(900) 超出区间
+    expect(res.body.data.total).toBe(2)
+    expect(res.body.data.list.every((p) => p.price >= 100 && p.price <= 500)).toBe(true)
+  })
+
+  it('按 price_asc 排序后列表价格非递减', async () => {
+    const res = await request(app).get(`${BASE}/products?keyword=flt_&sort=price_asc`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.total).toBe(3)
+    const prices = res.body.data.list.map((p) => p.price)
+    for (let i = 1; i < prices.length; i++) {
+      expect(prices[i]).toBeGreaterThanOrEqual(prices[i - 1])
+    }
+  })
+})
+
 describe('orders', () => {
   it('无 token 下单 -> 401', async () => {
     const res = await request(app)
