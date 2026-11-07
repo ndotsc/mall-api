@@ -174,3 +174,105 @@ sudo certbot --nginx -d mall.example.com   # 自动签发并改写配置为 443
 - **跨域报错**：异域部署时后端 `CORS_ORIGINS` 必须包含前端域名；同域反代不触发跨域。
 - **迁移失败**：确认 `DATABASE_URL` 正确且 MySQL 可达；`docker compose logs backend` 看 `migrate deploy` 输出。
 - **图片不显示**：确认 `/uploads/` 已反代（同域）或前端图片地址走的是后端域名（异域）。
+
+---
+
+## 6. 第四周：App 打包（uni-app → Android / H5 / 微信小程序）
+
+商城前端 `mall-app` 是一份 uni-app（Vue3）代码，**一套代码可同时出 Android App、H5、微信小程序**。
+本仓库已包含 `src/manifest.json`（含 `app-plus` 权限、`mp-weixin` 配置），打包前先按 §6.1 清单核对。
+
+> ⚠️ **本周执行原则**：**免费的步骤现在就做/就文档化；所有付费项一律跳过、仅在此文档登记**，待你自行办理后再上线。
+> 其中 **Android APK 云打包、H5 打包、后端/Web 部署（Docker / Railway / Vercel / Nginx / Let's Encrypt）都是免费的**；真正要花钱的是：服务器租金、域名、ICP 备案（免费代提交但需买 ≥3 个月服务器）、微信小程序认证 ¥300/年、苹果开发者 $99/年、微信支付商户（需营业执照）、App Store 上架、OSS/CDN、软著等——见 §7。
+
+### 6.1 App 端适配清单（打包前必查，全部免费）
+
+1. **DCloud AppID**：`src/manifest.json` 顶层 `"appid"` 当前填的是微信小程序 AppID（`wxa7e1f8945573037a`）。
+   - **云打包 Android APK 时，必须改成你自己的 DCloud AppID**（在 [HBuilderX](https://www.dcloud.io/hbuilderx.html) 里「登录 DCloud 账号 → 右键项目 → 重新获取 AppID」会自动写入，格式 `__UNI__XXXX`）。
+   - `mp-weixin.appid` 仍填你自己的微信小程序 AppID（与顶层 AppID 不同，互不冲突）。
+2. **应用图标 / 启动图**：在 HBuilderX「manifest → App 图标配置 / 启动图配置」里上传（png，建议 1024×1024）。**不配会打包失败或显示默认图标**。
+3. **权限裁剪**：`app-plus.distribute.android.permissions` 已列了一组，建议按实际用到的删减（本商城只用网络、相机可选），权限过多会被应用市场拒审。示例精简：
+   ```json
+   "permissions": [
+     "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+     "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>"
+   ]
+   ```
+4. **后端地址**：App / H5 真机访问的是你部署后的公网后端（见 §3 / §4）。开发期 `manifest` 无需改；生产在 `src/utils/request.js` 的 `baseURL` 或环境变量里指向 `https://你的域名/api`（同域反代则留空走相对路径）。**确认打包前 request 基址不是 `localhost`**。
+5. **隐私协议 / 权限说明**：主流应用市场（含国内安卓渠道）要求 App 有《隐私政策》并在首次启动时弹窗同意。HBuilderX 自带"App 权限使用说明 / 隐私政策"配置入口，按需填写。
+
+### 6.2 HBuilderX 云打包 Android APK（**免费**，推荐首选）
+
+云打包由 DCloud 服务器完成，**个人开发者免费**（有每日额度，足够学习/演示）。无需本地装 Android Studio。
+
+1. 下载安装 [HBuilderX](https://www.dcloud.io/hbuilderx.html)（免费），导入 `mall-app` 项目（文件 → 导入 → 从本地目录）。
+2. 登录 DCloud 账号（菜单「头像」），确保 `manifest.json` 的 AppID 已是你的 DCloud AppID（§6.1-1）。
+3. 发行 → 原生 App-云打包：
+   - 选择 **Android**，勾选「使用公共测试证书」**（免费，无需自己申请）** 即可出包；正式发布可后续申请自有证书。
+   - 包名默认 `uni.<appid>`，可改（如 `com.example.mall`）。
+   - 勾选「打正式包」。
+4. 提交后等 1–5 分钟，HBuilderX 弹出下载链接 → 下载 `.apk` → 传到手机安装（需允许「未知来源」安装）。
+5. 打开 App，注册/登录/浏览商品/加购/下单走一遍，确认后端地址正确、能拉到数据。
+
+> 自有签名证书（进阶，免费但繁琐）：用 `keytool` 生成 `keystore`，在 HBuilderX 选「使用自有证书」并填路径/别名/密码。好处是后续升级 App 必须用同一证书，否则无法覆盖安装。
+
+### 6.3 Android 离线打包（进阶，免费但重）
+
+若云打包额度不够或要深度定制原生，可用 [Android Studio + uni-app 离线 SDK](https://nativesupport.dcloud.net.cn/AppDocs/download/android) 本地编译。步骤：导入 SDK 的 `HBuilder-Integrate-AS` 模板 → 把 `mall-app` 的 `build` 产物（发行 → 原生 App-本地打包 → 生成本地打包 App 资源）放进 `assets/apps/<appid>/www` → 配 `manifest` 与应用签名 → 用 Android Studio 出包。**本学习项目一般不必走这条。**
+
+### 6.4 H5 打包与托管（**免费**）
+
+uni-app 可一键出 H5：
+
+```bash
+cd mall-app
+npm install          # 已装可跳过
+npm run build:h5     # 产物在 unpackage/dist/build/h5/
+```
+
+- 本地预览：`npm run dev:h5`。
+- **部署**：把 `h5/` 目录上传到任意静态托管（和 §4.3 的前端静态目录类似，放 Nginx `/var/www/mall-h5` 或 Vercel/对象存储），配 `VITE_API_BASE` 指向公网后端。
+- H5 在微信内打开时若要用「微信一键登录」，需已认证公众号 + 已备案域名（见 §7 付费项）。
+
+### 6.5 微信小程序打包与审核（需小程序账号；**个人主体有限制**）
+
+1. 注册 [微信小程序](https://mp.weixin.qq.com) 账号（个人可注册，**免费**）。个人主体**不能开通微信支付**（见 §7），本商城下单是模拟下单，不影响跑通流程。
+2. 在 `manifest.json` 的 `mp-weixin.appid` 填你的小程序 AppID；HBuilderX 发行 → 小程序-微信，生成 `unpackage/dist/build/mp-weixin/`。
+3. 用 [微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html) 导入该目录 → 上传 → 登录 mp 后台「版本管理」提交审核 → 审核通过发布。
+4. **真机走通**：微信开发者工具里「真机调试」，扫码在手机上看「浏览 → 加购 → 下单 → 查订单」闭环。注意 `mp-weixin.setting.urlCheck` 在开发期可关，上线前若接口走公网需在小程序后台配置 request 合法域名。
+
+---
+
+## 7. 付费内容汇总（本周全部**跳过**，仅登记，待你自行办理）
+
+> 下面的项**本周不执行**。它们不影响代码完成度，只影响"能否对外公网正式运营"。每一项都给了免费替代或说明。
+
+| # | 付费项 | 费用（参考） | 是否必须 | 免费替代 / 说明 | 本周状态 |
+|---|---|---|---|---|---|
+| 1 | 云服务器（后端/Web 跑在哪） | ¥50–100/月（轻量）起 | **是**（若公网部署） | 本地/局域网跑可免费，但只能自己访问 | ⏸ 跳过（已文档化 Docker/Nginx 方案） |
+| 2 | 域名注册 | ¥20–80/年 | 否（IP 可临时访问） | 直接用服务器公网 IP，但不规范、境内 80/443 可能受限 | ⏸ 跳过 |
+| 3 | ICP 备案（境内开站） | **免费**（云厂商代提交），但需先购 ≥3 个月服务器 | 境内域名开站必须 | 选**境外地域**（香港/新加坡）免备案，跨境偏慢 | ⏸ 跳过 |
+| 4 | SSL 证书（HTTPS） | Let's Encrypt **免费**自动续期 | 强烈建议（浏览器标记不安全） | 见 §4.4 certbot，免费 | ✅ 已文档化（免费） |
+| 5 | 微信小程序认证 | **¥300/年** | 个人号非必须；企业号必须 | 个人号免认证可上传调试，但不能微信支付 | ⏸ 跳过（个人号够演示） |
+| 6 | 微信支付商户号 | 免费注册，但需**营业执照** | 本商城为模拟下单，非必须 | 用模拟下单，无需真实支付 | ⏸ 跳过（代码已预留 WX 配置位） |
+| 7 | 苹果开发者账号 | **$99/年** | 出 iOS App 必须 | Android APK（§6.2）免费可替代 | ⏸ 跳过（先做 Android） |
+| 8 | App Store 上架 | 含在 $99 内，审核周期数天 | 出 iOS 必须 | 同 7 | ⏸ 跳过 |
+| 9 | 各安卓应用市场（华为/小米等）上架 | 免费或需软著/资质 | 想多渠道分发时 | 直接发 APK 安装包（§6.2）免费 | ⏸ 跳过 |
+| 10 | OSS / CDN（图片与静态资源加速） | 按量付费 | 非必须（初期后端 `/uploads` 直出即可） | 后端直接托管上传图片，免费 | ⏸ 跳过 |
+| 11 | 软件著作权（软著） | 官费 ¥0（无纸化）或加急收费 | 上架部分市场/投标需要 | 学习项目一般无需 | ⏸ 跳过 |
+| 12 | 短信验证码 / 第三方登录 | 按量付费 | 本商城用账号密码登录，非必须 | 已用用户名+密码，免费 | ✅ 无需 |
+
+**一句话**：本周把**免费的**都做完了——后端/Web 部署方案（Docker/PaaS/国内云/HTTPS）、Android APK 云打包、H5 打包、微信小程序打包流程。**付费项（服务器、域名、备案、微信认证、苹果账号、支付商户等）一律未动，等你办妥后按本文 §3/§4/§6/§7 的步骤补做即可。**
+
+---
+
+## 8. 上线总验收清单（勾完即可对外）
+
+- [ ] 后端部署并 `GET /api/health` 返回 ok（§3 / §4）
+- [ ] 前端（Web / H5）能访问且请求打到正确后端（§3.2 / §4.3 / §6.4）
+- [ ] HTTPS 可用（§4.4，免费 certbot）
+- [ ] **Web 端**：注册 → 浏览 → 搜索/筛选 → 加购 → **选已存地址 / 手动填地址** → 用券 → 下单 → 查订单 → 收藏 → 评价 全链路走通
+- [ ] **App（Android APK）**：真机装包，上述链路走通（§6.2）
+- [ ] **小程序**：开发者工具真机调试走通（§6.5，个人号无支付）
+- [ ] 数据库已备份（§DEPLOY-CN §8）
+- [ ] （付费项办妥后）域名备案 / 小程序认证 / iOS 上架等按 §7 补做
