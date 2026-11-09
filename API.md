@@ -5,6 +5,7 @@
 > 统一响应：`{ code: 0, message: "ok", data: ... }`；业务错误 `code` 同 HTTP 状态码（400/401/403/404…）。
 > 鉴权：需登录的接口在请求头带 `Authorization: Bearer <token>`。标注「公开」的无需鉴权。
 > 金额：所有 `price` / `totalAmount` 等金额字段单位均为**分**，前端展示请 ÷100。
+> 图片：`cover` / `avatar` / 上传返回的 `url` 均为**完整 URL**，可直接用于 `<img src>`；详见「九、文件上传」的「图片 URL 契约」。
 
 ---
 
@@ -95,10 +96,18 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | /upload | `multipart/form-data`，字段名 `file`；返回 `{ "url": "/uploads/文件名" }` |
+| POST | /upload | `multipart/form-data`，字段名 `file`；返回 `{ "url": "https://api.example.com/uploads/文件名" }`（**完整 URL**） |
 
 > 上传限制：仅允许 `jpg / jpeg / png / gif / webp` 图片，单文件 ≤ 2MB；文件名由服务端生成（防路径穿越）。
 > **安全提示**：当前该接口未加鉴权（任何人可上传），生产环境建议加上 `authRequired` + 上传者归属/配额校验。
+
+### 图片 URL 契约（三套后端一致）
+
+- **接口返回完整 URL**：`cover` / `avatar` / 上传接口的 `url` 都是可直接给 `<img src>` 用的绝对地址，前端跨域部署（前端 `www.example.com`、后端 `api.example.com`）**不需要**再配 vite proxy 转发 `/uploads`。
+- **数据库只存相对路径** `/uploads/xxx.png`：换域名、换端口、在三套后端间切换都不会让历史数据失效。写接口同时接受相对路径与完整 URL，服务端会在写库前把完整 URL 还原成相对路径。
+- **origin 从哪来**：`PUBLIC_ORIGIN`（如 `https://api.example.com` 或 CDN 域名）优先；留空则按当前请求的 `scheme://host` 推导（本地分别为 `http://localhost:3000/3001/3002`）。放在 Nginx / 网关后面时**必须显式配置**，否则会推导出内网的 `http://127.0.0.1:3000`；真机调试要填局域网 IP，不能填 `localhost`。
+- **静态文件目录**：三套后端共用 `backend/uploads`（各自的 `UPLOAD_DIR` 或 PHP 的 compose 挂载都指向它），否则「Node 上传的图，切到 Go/PHP 就 404」。生产多实例应换成对象存储 / CDN，并把 `PUBLIC_ORIGIN` 指过去。
+- 已经是外链（`https://picsum.photos/...`）或 `data:` 的值原样返回，不会被改写。
 
 ---
 

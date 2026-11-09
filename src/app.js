@@ -8,6 +8,7 @@ import { notFound, errorHandler } from './middleware/error.js'
 import { globalLimiter } from './middleware/rateLimit.js'
 import { auditLog } from './middleware/audit.js'
 import { logger, redact } from './utils/logger.js'
+import { relativize } from './utils/assetUrl.js'
 import path from 'path'
 
 // app.js 只负责「组装应用」，不负责启动（启动在 server.js）
@@ -27,6 +28,16 @@ app.use(cors({ origin: allowedOrigins }))
 //    必须放在路由之前，否则路由里读不到 body；限制体积防超大请求打爆内存
 app.use(express.json({ limit: '1mb' }))
 app.use(express.urlencoded({ limit: '1mb', extended: true }))
+
+// 3.3 图片入参归一化：前端常把上传接口返回的完整 URL 原样回填到 cover / avatar，
+//     这里统一还原成 `/uploads/xxx` 再写库，避免把域名和端口写死在数据库里。
+//     （响应出口的反向转换在 utils/response.js 的 ok() 里）
+app.use((req, _res, next) => {
+  if (req.body && typeof req.body === 'object') {
+    req.body = relativize(req.body)
+  }
+  next()
+})
 
 // 3.4 全局限流（健康检查除外）
 app.use(globalLimiter)
@@ -65,7 +76,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() })
 })
 
-app.use('/uploads', express.static(path.resolve('public/uploads')))
+// 静态图片目录：三套后端共用 backend/uploads（由 .env 的 UPLOAD_DIR 指定），
+// 这样「Node 上传的图」在 Go / PHP 后端下也能按完整 URL 直接取到。
+const uploadDir = process.env.UPLOAD_DIR || 'public/uploads'
+app.use('/uploads', express.static(path.resolve(uploadDir)))
 
 // 4. 业务路由：所有接口挂在 /api 前缀下
 app.use('/api', routes)

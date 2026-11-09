@@ -21,6 +21,7 @@ const spec = {
       '- **鉴权**：需登录的接口在请求头带 `Authorization: Bearer <token>`；标注「公开」的无需鉴权。',
       '- **金额单位**：所有 `price` / `totalAmount` 等金额字段单位均为**分**，前端展示请 ÷100（如 9900 分 = ¥99.00）。',
       '- **分页**：列表接口统一支持 `page` / `pageSize`（上限见各接口），返回 `{ list, total, page, pageSize }`。',
+      '- **图片 URL**：`cover` / `avatar` / 上传接口返回的 `url` 一律是**完整 URL**（如 `https://api.example.com/uploads/xxx.png`），前端可直接用于 `<img src>`，跨域部署无需再配 vite proxy。数据库里仍只存相对路径 `/uploads/xxx.png`；写接口同时接受相对路径和完整 URL。完整 URL 的 origin 由 `PUBLIC_ORIGIN` 指定（留空按请求推导），静态目录由 `UPLOAD_DIR` 指定。',
     ].join('\n'),
   },
   servers: [
@@ -62,7 +63,7 @@ const spec = {
         properties: {
           id: { type: 'integer', example: 1 },
           title: { type: 'string', example: 'Vue3 组合式 API 入门' },
-          cover: { type: 'string', nullable: true, example: '/uploads/xxx.jpg', description: '封面图 URL' },
+          cover: { type: 'string', nullable: true, example: 'https://api.example.com/uploads/xxx.jpg', description: '封面图 URL' },
           summary: { type: 'string', nullable: true, example: 'ref 与 reactive 的区别' },
           content: { type: 'string', example: '正文内容…' },
           status: { type: 'integer', example: 1, description: '1=正常' },
@@ -106,7 +107,7 @@ const spec = {
               id: { type: 'integer', example: 1 },
               name: { type: 'string', example: '商品名称' },
               price: { type: 'integer', example: 9900, description: '单位：分' },
-              cover: { type: 'string', nullable: true, example: '/uploads/xxx.jpg' },
+              cover: { type: 'string', nullable: true, example: 'https://api.example.com/uploads/xxx.jpg' },
             },
           },
         },
@@ -488,7 +489,7 @@ const spec = {
           content: { 'multipart/form-data': { schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } } },
         },
         responses: {
-          '200': { description: '{ url: "/uploads/文件名" }' },
+          '200': { description: '{ url: "https://api.example.com/uploads/文件名" }（完整 URL；库里存相对路径）' },
           '400': { description: '未收到文件 / 仅支持 jpg png gif webp / 超出 2MB' },
         },
       },
@@ -735,5 +736,9 @@ router.get('/', (_req, res) => {
 </body>
 </html>`)
 })
+
+// 额外导出 spec：便于脚本把契约快照同步给 mall-api-go / mall-api-php
+// （两边用 //go:embed / file_get_contents 直接提供同一份 JSON）
+export { spec as openapiSpec }
 
 export default router

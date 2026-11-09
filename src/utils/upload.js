@@ -3,10 +3,14 @@ import path from 'path'
 import fs from 'fs'
 import { AppError } from './AppError.js'
 
-const dir = 'public/uploads'
+// 与 app.js 的静态目录保持一致：默认 public/uploads，
+// 三后端共用一份文件时在 .env 配 UPLOAD_DIR=../uploads（见 backend/README.md）。
+// 故意在回调里取值，避免模块加载顺序早于 dotenv 读 .env。
+const uploadDir = () => process.env.UPLOAD_DIR || 'public/uploads'
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
+        const dir = uploadDir()
         fs.mkdirSync(dir, { recursive: true })
         cb(null, dir)
     },
