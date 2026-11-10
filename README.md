@@ -2,6 +2,8 @@
 
 小型商城后端：Express 5 + Prisma 6 + MySQL。提供商品 / 文章 / 分类 / 订单 / 鉴权 / 上传接口，写接口需管理员 JWT。
 
+> 作品集总览：[mall-web/PORTFOLIO.md](https://github.com/ndotsc/mall-web/blob/main/PORTFOLIO.md)（代码仓库链接，未联网验证；非部署地址）。本服务是三套兼容后端中的 Node / Express 版，监听 3000，用 pnpm 启动。
+
 ## 环境要求
 
 - Node 20+，pnpm 12
